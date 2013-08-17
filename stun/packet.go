@@ -13,7 +13,7 @@
 // limitations under the License.
 //
 // author: Cong Ding <dinggnu@gmail.com>
-//
+
 package stun
 
 import (
@@ -83,7 +83,7 @@ func (v *packet) bytes() []byte {
 
 func (v *packet) mappedAddr() *Host {
 	for _, a := range v.attributes {
-		if a.types == ATTRIBUTE_MAPPED_ADDRESS {
+		if a.types == attribute_MAPPED_ADDRESS {
 			h := a.address()
 			return h
 		}
@@ -93,7 +93,7 @@ func (v *packet) mappedAddr() *Host {
 
 func (v *packet) changedAddr() *Host {
 	for _, a := range v.attributes {
-		if a.types == ATTRIBUTE_CHANGED_ADDRESS {
+		if a.types == attribute_CHANGED_ADDRESS {
 			h := a.address()
 			return h
 		}
@@ -103,7 +103,7 @@ func (v *packet) changedAddr() *Host {
 
 func (v *packet) xorMappedAddr() *Host {
 	for _, a := range v.attributes {
-		if (a.types == ATTRIBUTE_XOR_MAPPED_ADDRESS) || (a.types == ATTRIBUTE_XOR_MAPPED_ADDRESS_EXP) {
+		if (a.types == attribute_XOR_MAPPED_ADDRESS) || (a.types == attribute_XOR_MAPPED_ADDRESS_EXP) {
 			h := a.xorMappedAddr()
 			return h
 		}

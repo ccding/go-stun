@@ -13,7 +13,7 @@
 // limitations under the License.
 //
 // author: Cong Ding <dinggnu@gmail.com>
-//
+
 package stun
 
 import (
@@ -40,11 +40,11 @@ func newFingerprintAttribute(packet *packet) *attribute {
 	crc := crc32.ChecksumIEEE(packet.bytes()) ^ FINGERPRINT
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, crc)
-	return newAttribute(ATTRIBUTE_FINGERPRINT, buf)
+	return newAttribute(attribute_FINGERPRINT, buf)
 }
 
 func newSoftwareAttribute(packet *packet, name string) *attribute {
-	return newAttribute(ATTRIBUTE_SOFTWARE, []byte(name))
+	return newAttribute(attribute_SOFTWARE, []byte(name))
 }
 
 func newChangeReqAttribute(packet *packet, changeIp bool, changePort bool) *attribute {
@@ -55,7 +55,7 @@ func newChangeReqAttribute(packet *packet, changeIp bool, changePort bool) *attr
 	if changePort {
 		value[3] |= 0x02
 	}
-	return newAttribute(ATTRIBUTE_CHANGE_REQUEST, value)
+	return newAttribute(attribute_CHANGE_REQUEST, value)
 }
 
 func (v *attribute) xorMappedAddr() *Host {

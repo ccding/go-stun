@@ -14,31 +14,11 @@
 //
 // author: Cong Ding <dinggnu@gmail.com>
 
+// go-stun is a STUN (RFC 3489 and RFC 5389) client implementation in golang.
+//
+// It is extremely easy to use -- just one line of code.
+//
+// 	nat, host, err := stun.Discover()
+//
+// More details please go to `example.go`.
 package stun
-
-import (
-	"net"
-	"strconv"
-)
-
-type Host struct {
-	family uint16
-	ip     string
-	port   uint16
-}
-
-func (h *Host) Family() uint16 {
-	return h.family
-}
-
-func (h *Host) Ip() string {
-	return h.ip
-}
-
-func (h *Host) Port() uint16 {
-	return h.port
-}
-
-func (h *Host) Transport() string {
-	return net.JoinHostPort(h.ip, strconv.Itoa(int(h.port)))
-}

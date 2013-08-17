@@ -13,7 +13,7 @@
 // limitations under the License.
 //
 // author: Cong Ding <dinggnu@gmail.com>
-//
+
 package stun
 
 import (
@@ -40,7 +40,7 @@ func sendBindingReq(destAddr string) (*packet, string, error) {
 	}
 
 	packet := newPacket()
-	packet.types = TYPE_BINDING_REQUEST
+	packet.types = type_BINDING_REQUEST
 	attribute := newSoftwareAttribute(packet, DefaultSoftwareName)
 	packet.addAttribute(*attribute)
 	attribute = newFingerprintAttribute(packet)
@@ -64,7 +64,7 @@ func sendChangeReq(changeIp bool, changePort bool) (*packet, error) {
 
 	// construct packet
 	packet := newPacket()
-	packet.types = TYPE_BINDING_REQUEST
+	packet.types = type_BINDING_REQUEST
 	attribute := newSoftwareAttribute(packet, DefaultSoftwareName)
 	packet.addAttribute(*attribute)
 	attribute = newChangeReqAttribute(packet, changeIp, changePort)
