@@ -103,8 +103,8 @@ func test1(destAddr string) (*packet, string, bool, *Host, error) {
 	if hc == nil {
 		return nil, "", false, nil, errors.New("No changed address")
 	}
-	changeAddr := hc.Transport()
-	identical := localAddr == hm.Transport()
+	changeAddr := hc.TransportAddr()
+	identical := localAddr == hm.TransportAddr()
 
 	return packet, changeAddr, identical, hm, nil
 }

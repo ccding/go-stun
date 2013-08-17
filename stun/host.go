@@ -39,6 +39,6 @@ func (h *Host) Port() uint16 {
 	return h.port
 }
 
-func (h *Host) Transport() string {
+func (h *Host) TransportAddr() string {
 	return net.JoinHostPort(h.ip, strconv.Itoa(int(h.port)))
 }
