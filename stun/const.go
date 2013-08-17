@@ -23,8 +23,8 @@ const (
 )
 
 const (
-	MAGIC_COOKIE = 0x2112A442
-	FINGERPRINT  = 0x5354554e
+	magicCookie = 0x2112A442
+	fingerprint = 0x5354554e
 )
 const (
 	NAT_ERROR = iota
@@ -100,7 +100,7 @@ const (
 	attribute_SOFTWARE                 = 0x8022
 	attribute_ALTERNATE_SERVER         = 0x8023
 	attribute_CACHE_TIMEOUT            = 0x8027
-	attribute_FINGERPRINT              = 0x8028
+	attribute_fingerprint              = 0x8028
 	attribute_ICE_CONTROLLED           = 0x8029
 	attribute_ICE_CONTROLLING          = 0x802A
 	attribute_RESPONSE_ORIGIN          = 0x802B

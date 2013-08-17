@@ -37,10 +37,10 @@ func newAttribute(types uint16, value []byte) *attribute {
 }
 
 func newFingerprintAttribute(packet *packet) *attribute {
-	crc := crc32.ChecksumIEEE(packet.bytes()) ^ FINGERPRINT
+	crc := crc32.ChecksumIEEE(packet.bytes()) ^ fingerprint
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, crc)
-	return newAttribute(attribute_FINGERPRINT, buf)
+	return newAttribute(attribute_fingerprint, buf)
 }
 
 func newSoftwareAttribute(packet *packet, name string) *attribute {
@@ -60,14 +60,14 @@ func newChangeReqAttribute(packet *packet, changeIp bool, changePort bool) *attr
 
 func (v *attribute) xorMappedAddr() *Host {
 	cookie := make([]byte, 4)
-	binary.BigEndian.PutUint32(cookie, MAGIC_COOKIE)
+	binary.BigEndian.PutUint32(cookie, magicCookie)
 	xorIp := make([]byte, 16)
 	for i := 0; i < len(v.value)-4; i++ {
 		xorIp[i] = v.value[i+4] ^ cookie[i]
 	}
 	port := binary.BigEndian.Uint16(v.value[2:4])
 	return &Host{binary.BigEndian.Uint16(v.value[0:2]),
-		net.IP(xorIp).String(), port ^ (MAGIC_COOKIE >> 32)}
+		net.IP(xorIp).String(), port ^ (magicCookie >> 32)}
 }
 
 func (v *attribute) address() *Host {

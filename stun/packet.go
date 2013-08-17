@@ -34,7 +34,7 @@ func newPacket() *packet {
 	v := new(packet)
 	v.id = make([]byte, 12)
 	v.attributes = make([]attribute, 0, 10)
-	v.cookie = MAGIC_COOKIE
+	v.cookie = magicCookie
 	v.length = 0
 	return v
 }
