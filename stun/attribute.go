@@ -65,15 +65,26 @@ func (v *attribute) xorMappedAddr() *Host {
 	for i := 0; i < len(v.value)-4; i++ {
 		xorIp[i] = v.value[i+4] ^ cookie[i]
 	}
+	family := binary.BigEndian.Uint16(v.value[0:2])
 	port := binary.BigEndian.Uint16(v.value[2:4])
-	return &Host{binary.BigEndian.Uint16(v.value[0:2]),
-		net.IP(xorIp).String(), port ^ (magicCookie >> 32)}
+
+	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
+	if family == attribute_FAMILY_IPV4 {
+		xorIp = xorIp[:4]
+	}
+
+	return &Host{family, net.IP(xorIp).String(), port ^ (magicCookie >> 32)}
 }
 
 func (v *attribute) address() *Host {
 	h := new(Host)
 	h.family = binary.BigEndian.Uint16(v.value[0:2])
 	h.port = binary.BigEndian.Uint16(v.value[2:4])
+
+	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
+	if h.family == attribute_FAMILY_IPV4 {
+		v.value = v.value[:8]
+	}
 	h.ip = net.IP(v.value[4:]).String()
 	return h
 }
