@@ -17,7 +17,7 @@
 package stun
 
 const (
-	DefaultServerHost   = "provserver.televolution.net"
+	DefaultServerHost   = "stun1.voiceeclipse.net"
 	DefaultServerPort   = 3478
 	DefaultSoftwareName = "StunClient"
 )
