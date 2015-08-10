@@ -22,23 +22,22 @@ import (
 )
 
 // Padding the length of the byte slice to multiple of 4.
-func padding(b []byte) []byte {
-	l := uint16(len(b))
-	return append(b, make([]byte, align(l)-l)...)
+func padding(bytes []byte) []byte {
+	length := uint16(len(bytes))
+	return append(bytes, make([]byte, align(length)-length)...)
 }
 
 // Align the uint16 number to the smallest multiple of 4, which is larger than
 // or equal to the uint16 number.
-func align(l uint16) uint16 {
-	return (l + 3) & 0xfffc
+func align(n uint16) uint16 {
+	return (n + 3) & 0xfffc
 }
 
 func sendBindingReq(destAddr string) (*packet, string, error) {
-	connection, err := net.Dial("udp", destAddr)
+	conn, err := net.Dial("udp", destAddr)
 	if err != nil {
 		return nil, "", err
 	}
-
 	// Construct packet.
 	packet := newPacket()
 	packet.types = type_BINDING_REQUEST
@@ -46,23 +45,21 @@ func sendBindingReq(destAddr string) (*packet, string, error) {
 	packet.addAttribute(*attribute)
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
-
 	// Send packet.
-	localAddr := connection.LocalAddr().String()
-	packet, err = packet.send(connection)
+	localAddr := conn.LocalAddr().String()
+	packet, err = packet.send(conn)
 	if err != nil {
 		return nil, "", err
 	}
-	err = connection.Close()
+	err = conn.Close()
 	return packet, localAddr, err
 }
 
 func sendChangeReq(changeIp bool, changePort bool) (*packet, error) {
-	connection, err := net.Dial("udp", serverAddr)
+	conn, err := net.Dial("udp", serverAddr)
 	if err != nil {
 		return nil, err
 	}
-
 	// Construct packet.
 	packet := newPacket()
 	packet.types = type_BINDING_REQUEST
@@ -72,13 +69,12 @@ func sendChangeReq(changeIp bool, changePort bool) (*packet, error) {
 	packet.addAttribute(*attribute)
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
-
 	// Send packet.
-	packet, err = packet.send(connection)
+	packet, err = packet.send(conn)
 	if err != nil {
 		return nil, err
 	}
-	err = connection.Close()
+	err = conn.Close()
 	return packet, err
 }
 
@@ -92,21 +88,21 @@ func test1(destAddr string) (*packet, string, bool, *Host, error) {
 	}
 
 	// RFC 3489 doesn't require the server return XOR mapped address.
-	hm := packet.xorMappedAddr()
-	if hm == nil {
-		hm = packet.mappedAddr()
-		if hm == nil {
-			return nil, "", false, nil, errors.New("No mapped address")
+	hostMappedAddr := packet.xorMappedAddr()
+	if hostMappedAddr == nil {
+		hostMappedAddr = packet.mappedAddr()
+		if hostMappedAddr == nil {
+			return nil, "", false, nil, errors.New("No mapped address.")
 		}
 	}
 
-	hc := packet.changedAddr()
-	if hc == nil {
-		return nil, "", false, nil, errors.New("No changed address")
+	hostChangedAddr := packet.changedAddr()
+	if hostChangedAddr == nil {
+		return nil, "", false, nil, errors.New("No changed address.")
 	}
-	changeAddr := hc.TransportAddr()
-	identical := localAddr == hm.TransportAddr()
-	return packet, changeAddr, identical, hm, nil
+	changeAddr := hostChangedAddr.TransportAddr()
+	identical := localAddr == hostMappedAddr.TransportAddr()
+	return packet, changeAddr, identical, hostMappedAddr, nil
 }
 
 func test2() (*packet, error) {

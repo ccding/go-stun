@@ -29,11 +29,11 @@ type attribute struct {
 }
 
 func newAttribute(types uint16, value []byte) *attribute {
-	a := new(attribute)
-	a.types = types
-	a.value = padding(value)
-	a.length = uint16(len(a.value))
-	return a
+	att := new(attribute)
+	att.types = types
+	att.value = padding(value)
+	att.length = uint16(len(att.value))
+	return att
 }
 
 func newFingerprintAttribute(packet *packet) *attribute {
@@ -76,14 +76,14 @@ func (v *attribute) xorMappedAddr() *Host {
 }
 
 func (v *attribute) address() *Host {
-	h := new(Host)
-	h.family = binary.BigEndian.Uint16(v.value[0:2])
-	h.port = binary.BigEndian.Uint16(v.value[2:4])
+	host := new(Host)
+	host.family = binary.BigEndian.Uint16(v.value[0:2])
+	host.port = binary.BigEndian.Uint16(v.value[2:4])
 
 	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
-	if h.family == attribute_FAMILY_IPV4 {
+	if host.family == attribute_FAMILY_IPV4 {
 		v.value = v.value[:8]
 	}
-	h.ip = net.IP(v.value[4:]).String()
-	return h
+	host.ip = net.IP(v.value[4:]).String()
+	return host
 }

@@ -38,7 +38,7 @@ func SetServerHost(host string, port int) error {
 		return err
 	}
 	if len(ips) == 0 {
-		return errors.New("Failed to get IP address of " + host)
+		return errors.New("Failed to get IP address of " + host + ".")
 	}
 	serverAddr = net.JoinHostPort(ips[0], strconv.Itoa(port))
 	return nil
