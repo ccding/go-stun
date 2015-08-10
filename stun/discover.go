@@ -21,14 +21,14 @@ import (
 	"net"
 )
 
-// padding the length of the byte slice to multiple of 4
+// Padding the length of the byte slice to multiple of 4.
 func padding(b []byte) []byte {
 	l := uint16(len(b))
 	return append(b, make([]byte, align(l)-l)...)
 }
 
-// align the uint16 number to the smallest multiple of 4, which is larger than
-// or equal to the uint16 number
+// Align the uint16 number to the smallest multiple of 4, which is larger than
+// or equal to the uint16 number.
 func align(l uint16) uint16 {
 	return (l + 3) & 0xfffc
 }
@@ -39,6 +39,7 @@ func sendBindingReq(destAddr string) (*packet, string, error) {
 		return nil, "", err
 	}
 
+	// Construct packet.
 	packet := newPacket()
 	packet.types = type_BINDING_REQUEST
 	attribute := newSoftwareAttribute(packet, DefaultSoftwareName)
@@ -46,12 +47,12 @@ func sendBindingReq(destAddr string) (*packet, string, error) {
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
 
+	// Send packet.
 	localAddr := connection.LocalAddr().String()
 	packet, err = packet.send(connection)
 	if err != nil {
 		return nil, "", err
 	}
-
 	err = connection.Close()
 	return packet, localAddr, err
 }
@@ -62,7 +63,7 @@ func sendChangeReq(changeIp bool, changePort bool) (*packet, error) {
 		return nil, err
 	}
 
-	// construct packet
+	// Construct packet.
 	packet := newPacket()
 	packet.types = type_BINDING_REQUEST
 	attribute := newSoftwareAttribute(packet, DefaultSoftwareName)
@@ -72,11 +73,11 @@ func sendChangeReq(changeIp bool, changePort bool) (*packet, error) {
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
 
+	// Send packet.
 	packet, err = packet.send(connection)
 	if err != nil {
 		return nil, err
 	}
-
 	err = connection.Close()
 	return packet, err
 }
@@ -90,8 +91,8 @@ func test1(destAddr string) (*packet, string, bool, *Host, error) {
 		return nil, "", false, nil, nil
 	}
 
+	// RFC 3489 doesn't require the server return XOR mapped address.
 	hm := packet.xorMappedAddr()
-	// rfc 3489 doesn't require the server return xor mapped address
 	if hm == nil {
 		hm = packet.mappedAddr()
 		if hm == nil {
@@ -105,7 +106,6 @@ func test1(destAddr string) (*packet, string, bool, *Host, error) {
 	}
 	changeAddr := hc.TransportAddr()
 	identical := localAddr == hm.TransportAddr()
-
 	return packet, changeAddr, identical, hm, nil
 }
 

@@ -72,7 +72,6 @@ func (v *attribute) xorMappedAddr() *Host {
 	if family == attribute_FAMILY_IPV4 {
 		xorIp = xorIp[:4]
 	}
-
 	return &Host{family, net.IP(xorIp).String(), port ^ (magicCookie >> 32)}
 }
 

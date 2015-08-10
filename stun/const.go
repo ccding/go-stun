@@ -26,6 +26,7 @@ const (
 	magicCookie = 0x2112A442
 	fingerprint = 0x5354554e
 )
+
 const (
 	NAT_ERROR = iota
 	NAT_UNKNOWN

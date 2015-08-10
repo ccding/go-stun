@@ -45,7 +45,6 @@ func newPacketFromBytes(b []byte) *packet {
 	packet.length = binary.BigEndian.Uint16(b[2:4])
 	packet.cookie = binary.BigEndian.Uint32(b[4:8])
 	packet.id = b[8:20]
-
 	for pos := uint16(20); pos < uint16(len(b)); {
 		types := binary.BigEndian.Uint16(b[pos : pos+2])
 		length := binary.BigEndian.Uint16(b[pos+2 : pos+4])
@@ -54,7 +53,6 @@ func newPacketFromBytes(b []byte) *packet {
 		packet.addAttribute(*attribute)
 		pos += align(length) + 4
 	}
-
 	return packet
 }
 
@@ -69,7 +67,6 @@ func (v *packet) bytes() []byte {
 	binary.BigEndian.PutUint16(b[2:4], v.length)
 	binary.BigEndian.PutUint32(b[4:8], v.cookie)
 	b = append(b, v.id...)
-
 	for _, a := range v.attributes {
 		buf := make([]byte, 2)
 		binary.BigEndian.PutUint16(buf, a.types)
@@ -117,18 +114,15 @@ func (v *packet) xorMappedAddr() *Host {
 // received, or a total of 9 requests have been sent.
 func (packet *packet) send(conn net.Conn) (*packet, error) {
 	timeout := 100
-
 	for i := 0; i < 9; i++ {
 		l, err := conn.Write(packet.bytes())
 		if err != nil {
 			return nil, err
 		}
-
 		conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Millisecond))
 		if timeout < 1600 {
 			timeout *= 2
 		}
-
 		b := make([]byte, 1024)
 		l, err = conn.Read(b)
 		if err == nil {
@@ -139,6 +133,5 @@ func (packet *packet) send(conn net.Conn) (*packet, error) {
 			}
 		}
 	}
-
 	return nil, nil
 }
