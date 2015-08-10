@@ -131,37 +131,32 @@ func discover(serverAddr string) (NATType, *Host, error) {
 			return NAT_NONE, host, nil
 		}
 		return NAT_SYMETRIC_UDP_FIREWALL, host, nil
-	} else {
-		packet, err = test2(serverAddr)
+	}
+	packet, err = test2(serverAddr)
+	if err != nil {
+		return NAT_ERROR, host, err
+	}
+	if packet != nil {
+		return NAT_FULL, host, nil
+	}
+	packet, _, identical, _, err = test1(changeAddr)
+	if err != nil {
+		return NAT_ERROR, host, err
+	}
+	if packet == nil {
+		// It should be NAT_BLOCKED, but will be detected in the first
+		// step. So this will never happen.
+		return NAT_UNKNOWN, host, nil
+	}
+	if identical {
+		packet, err = test3(serverAddr)
 		if err != nil {
 			return NAT_ERROR, host, err
 		}
-		if packet != nil {
-			return NAT_FULL, host, nil
-		} else {
-			packet, _, identical, _, err := test1(changeAddr)
-			if err != nil {
-				return NAT_ERROR, host, err
-			}
-			if packet == nil {
-				// It should be NAT_BLOCKED, but will be
-				// detected in the first step. So this will
-				// never happen.
-				return NAT_UNKNOWN, host, nil
-			}
-			if identical {
-				packet, err = test3(serverAddr)
-				if err != nil {
-					return NAT_ERROR, host, err
-				}
-				if packet == nil {
-					return NAT_PORT_RESTRICTED, host, nil
-				} else {
-					return NAT_RESTRICTED, host, nil
-				}
-			} else {
-				return NAT_SYMETRIC, host, nil
-			}
+		if packet == nil {
+			return NAT_PORT_RESTRICTED, host, nil
 		}
+		return NAT_RESTRICTED, host, nil
 	}
+	return NAT_SYMETRIC, host, nil
 }
