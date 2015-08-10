@@ -47,9 +47,9 @@ func newSoftwareAttribute(packet *packet, name string) *attribute {
 	return newAttribute(attribute_SOFTWARE, []byte(name))
 }
 
-func newChangeReqAttribute(packet *packet, changeIp bool, changePort bool) *attribute {
+func newChangeReqAttribute(packet *packet, changeIP bool, changePort bool) *attribute {
 	value := make([]byte, 4)
-	if changeIp {
+	if changeIP {
 		value[3] |= 0x04
 	}
 	if changePort {
@@ -61,18 +61,18 @@ func newChangeReqAttribute(packet *packet, changeIp bool, changePort bool) *attr
 func (v *attribute) xorMappedAddr() *Host {
 	cookie := make([]byte, 4)
 	binary.BigEndian.PutUint32(cookie, magicCookie)
-	xorIp := make([]byte, 16)
+	xorIP := make([]byte, 16)
 	for i := 0; i < len(v.value)-4; i++ {
-		xorIp[i] = v.value[i+4] ^ cookie[i]
+		xorIP[i] = v.value[i+4] ^ cookie[i]
 	}
 	family := binary.BigEndian.Uint16(v.value[0:2])
 	port := binary.BigEndian.Uint16(v.value[2:4])
 
 	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
 	if family == attribute_FAMILY_IPV4 {
-		xorIp = xorIp[:4]
+		xorIP = xorIP[:4]
 	}
-	return &Host{family, net.IP(xorIp).String(), port ^ (magicCookie >> 32)}
+	return &Host{family, net.IP(xorIP).String(), port ^ (magicCookie >> 32)}
 }
 
 func (v *attribute) address() *Host {

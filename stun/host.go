@@ -31,7 +31,7 @@ func (h *Host) Family() uint16 {
 	return h.family
 }
 
-func (h *Host) Ip() string {
+func (h *Host) IP() string {
 	return h.ip
 }
 

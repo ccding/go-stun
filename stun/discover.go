@@ -55,7 +55,7 @@ func sendBindingReq(destAddr string) (*packet, string, error) {
 	return packet, localAddr, err
 }
 
-func sendChangeReq(changeIp bool, changePort bool) (*packet, error) {
+func sendChangeReq(changeIP bool, changePort bool) (*packet, error) {
 	conn, err := net.Dial("udp", serverAddr)
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func sendChangeReq(changeIp bool, changePort bool) (*packet, error) {
 	packet.types = type_BINDING_REQUEST
 	attribute := newSoftwareAttribute(packet, DefaultSoftwareName)
 	packet.addAttribute(*attribute)
-	attribute = newChangeReqAttribute(packet, changeIp, changePort)
+	attribute = newChangeReqAttribute(packet, changeIP, changePort)
 	packet.addAttribute(*attribute)
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
