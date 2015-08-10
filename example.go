@@ -22,7 +22,7 @@ import (
 )
 
 func main() {
-	nat, host, err := stun.Discover()
+	nat, host, err := stun.NewClient().Discover()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -50,7 +50,7 @@ func main() {
 
 	if host != nil {
 		fmt.Println(host.Family())
-		fmt.Println(host.Ip())
+		fmt.Println(host.IP())
 		fmt.Println(host.Port())
 	}
 }

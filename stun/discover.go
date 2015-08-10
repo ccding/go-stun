@@ -33,8 +33,8 @@ func align(n uint16) uint16 {
 	return (n + 3) & 0xfffc
 }
 
-func sendBindingReq(destAddr string) (*packet, string, error) {
-	conn, err := net.Dial("udp", destAddr)
+func sendBindingReq(serverAddr string) (*packet, string, error) {
+	conn, err := net.Dial("udp", serverAddr)
 	if err != nil {
 		return nil, "", err
 	}
@@ -55,7 +55,7 @@ func sendBindingReq(destAddr string) (*packet, string, error) {
 	return packet, localAddr, err
 }
 
-func sendChangeReq(changeIP bool, changePort bool) (*packet, error) {
+func sendChangeReq(serverAddr string, changeIP bool, changePort bool) (*packet, error) {
 	conn, err := net.Dial("udp", serverAddr)
 	if err != nil {
 		return nil, err
@@ -78,8 +78,8 @@ func sendChangeReq(changeIP bool, changePort bool) (*packet, error) {
 	return packet, err
 }
 
-func test1(destAddr string) (*packet, string, bool, *Host, error) {
-	packet, localAddr, err := sendBindingReq(destAddr)
+func test1(serverAddr string) (*packet, string, bool, *Host, error) {
+	packet, localAddr, err := sendBindingReq(serverAddr)
 	if err != nil {
 		return nil, "", false, nil, err
 	}
@@ -105,16 +105,16 @@ func test1(destAddr string) (*packet, string, bool, *Host, error) {
 	return packet, changeAddr, identical, hostMappedAddr, nil
 }
 
-func test2() (*packet, error) {
-	return sendChangeReq(true, true)
+func test2(serverAddr string) (*packet, error) {
+	return sendChangeReq(serverAddr, true, true)
 }
 
-func test3() (*packet, error) {
-	return sendChangeReq(false, true)
+func test3(serverAddr string) (*packet, error) {
+	return sendChangeReq(serverAddr, false, true)
 }
 
-// follow rfc 3489 and 5389
-func discover() (NATType, *Host, error) {
+// Follow RFC 3489 and RFC 5389.
+func discover(serverAddr string) (NATType, *Host, error) {
 	packet, changeAddr, identical, host, err := test1(serverAddr)
 	if err != nil {
 		return NAT_ERROR, nil, err
@@ -123,7 +123,7 @@ func discover() (NATType, *Host, error) {
 		return NAT_BLOCKED, nil, err
 	}
 	if identical {
-		packet, err = test2()
+		packet, err = test2(serverAddr)
 		if err != nil {
 			return NAT_ERROR, host, err
 		}
@@ -132,7 +132,7 @@ func discover() (NATType, *Host, error) {
 		}
 		return NAT_SYMETRIC_UDP_FIREWALL, host, nil
 	} else {
-		packet, err = test2()
+		packet, err = test2(serverAddr)
 		if err != nil {
 			return NAT_ERROR, host, err
 		}
@@ -150,7 +150,7 @@ func discover() (NATType, *Host, error) {
 				return NAT_UNKNOWN, host, nil
 			}
 			if identical {
-				packet, err = test3()
+				packet, err = test3(serverAddr)
 				if err != nil {
 					return NAT_ERROR, host, err
 				}

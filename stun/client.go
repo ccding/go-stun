@@ -22,17 +22,19 @@ import (
 	"strconv"
 )
 
-var (
+type Client struct {
 	serverAddr   string
 	softwareName string
-)
+}
 
-func init() {
-	SetSoftwareName(DefaultSoftwareName)
+func NewClient() *Client {
+	c := new(Client)
+	c.SetSoftwareName(DefaultSoftwareName)
+	return c
 }
 
 // SetServerHost allows user to set the STUN hostname and port.
-func SetServerHost(host string, port int) error {
+func (c *Client) SetServerHost(host string, port int) error {
 	ips, err := net.LookupHost(host)
 	if err != nil {
 		return err
@@ -40,29 +42,29 @@ func SetServerHost(host string, port int) error {
 	if len(ips) == 0 {
 		return errors.New("Failed to get IP address of " + host + ".")
 	}
-	serverAddr = net.JoinHostPort(ips[0], strconv.Itoa(port))
+	c.serverAddr = net.JoinHostPort(ips[0], strconv.Itoa(port))
 	return nil
 }
 
 // SetServerAddr allows user to set the transport layer STUN server address.
-func SetServerAddr(address string) {
-	serverAddr = address
+func (c *Client) SetServerAddr(address string) {
+	c.serverAddr = address
 }
 
 // SetSoftwareName allows user to set the name of the software, which is used
 // for logging purpose (NOT used in the current implementation).
-func SetSoftwareName(name string) {
-	softwareName = name
+func (c *Client) SetSoftwareName(name string) {
+	c.softwareName = name
 }
 
 // Discover contacts the STUN server and gets the response of NAT type, host
 // for UDP punching.
-func Discover() (NATType, *Host, error) {
-	if serverAddr == "" {
-		err := SetServerHost(DefaultServerHost, DefaultServerPort)
+func (c *Client) Discover() (NATType, *Host, error) {
+	if c.serverAddr == "" {
+		err := c.SetServerHost(DefaultServerHost, DefaultServerPort)
 		if err != nil {
 			return NAT_ERROR, nil, err
 		}
 	}
-	return discover()
+	return discover(c.serverAddr)
 }
