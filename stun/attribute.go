@@ -40,7 +40,7 @@ func newFingerprintAttribute(packet *packet) *attribute {
 	crc := crc32.ChecksumIEEE(packet.bytes()) ^ fingerprint
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, crc)
-	return newAttribute(attribute_fingerprint, buf)
+	return newAttribute(attribute_FINGERPRINT, buf)
 }
 
 func newSoftwareAttribute(packet *packet, name string) *attribute {
