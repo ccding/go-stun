@@ -18,6 +18,7 @@ package stun
 
 import (
 	"encoding/binary"
+	"errors"
 	"net"
 	"time"
 )
@@ -39,21 +40,27 @@ func newPacket() *packet {
 	return v
 }
 
-func newPacketFromBytes(b []byte) *packet {
+func newPacketFromBytes(packetBytes []byte) (*packet, error) {
+	if len(packetBytes) < 24 {
+		return nil, errors.New("Received data length too short.")
+	}
 	packet := newPacket()
-	packet.types = binary.BigEndian.Uint16(b[0:2])
-	packet.length = binary.BigEndian.Uint16(b[2:4])
-	packet.cookie = binary.BigEndian.Uint32(b[4:8])
-	packet.id = b[8:20]
-	for pos := uint16(20); pos < uint16(len(b)); {
-		types := binary.BigEndian.Uint16(b[pos : pos+2])
-		length := binary.BigEndian.Uint16(b[pos+2 : pos+4])
-		value := b[pos+4 : pos+4+length]
+	packet.types = binary.BigEndian.Uint16(packetBytes[0:2])
+	packet.length = binary.BigEndian.Uint16(packetBytes[2:4])
+	packet.cookie = binary.BigEndian.Uint32(packetBytes[4:8])
+	packet.id = packetBytes[8:20]
+	for pos := uint16(20); pos < uint16(len(packetBytes)); {
+		types := binary.BigEndian.Uint16(packetBytes[pos : pos+2])
+		length := binary.BigEndian.Uint16(packetBytes[pos+2 : pos+4])
+		if pos+4+length > uint16(len(packetBytes)) {
+			return nil, errors.New("Received data format mismatch.")
+		}
+		value := packetBytes[pos+4 : pos+4+length]
 		attribute := newAttribute(types, value)
 		packet.addAttribute(*attribute)
 		pos += align(length) + 4
 	}
-	return packet
+	return packet, nil
 }
 
 func (v *packet) addAttribute(a attribute) {
@@ -62,27 +69,26 @@ func (v *packet) addAttribute(a attribute) {
 }
 
 func (v *packet) bytes() []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint16(b[0:2], v.types)
-	binary.BigEndian.PutUint16(b[2:4], v.length)
-	binary.BigEndian.PutUint32(b[4:8], v.cookie)
-	b = append(b, v.id...)
+	packetBytes := make([]byte, 8)
+	binary.BigEndian.PutUint16(packetBytes[0:2], v.types)
+	binary.BigEndian.PutUint16(packetBytes[2:4], v.length)
+	binary.BigEndian.PutUint32(packetBytes[4:8], v.cookie)
+	packetBytes = append(packetBytes, v.id...)
 	for _, a := range v.attributes {
 		buf := make([]byte, 2)
 		binary.BigEndian.PutUint16(buf, a.types)
-		b = append(b, buf...)
+		packetBytes = append(packetBytes, buf...)
 		binary.BigEndian.PutUint16(buf, a.length)
-		b = append(b, buf...)
-		b = append(b, a.value...)
+		packetBytes = append(packetBytes, buf...)
+		packetBytes = append(packetBytes, a.value...)
 	}
-	return b
+	return packetBytes
 }
 
 func (v *packet) mappedAddr() *Host {
 	for _, a := range v.attributes {
 		if a.types == attribute_MAPPED_ADDRESS {
-			h := a.address()
-			return h
+			return a.address()
 		}
 	}
 	return nil
@@ -91,8 +97,7 @@ func (v *packet) mappedAddr() *Host {
 func (v *packet) changedAddr() *Host {
 	for _, a := range v.attributes {
 		if a.types == attribute_CHANGED_ADDRESS {
-			h := a.address()
-			return h
+			return a.address()
 		}
 	}
 	return nil
@@ -101,8 +106,7 @@ func (v *packet) changedAddr() *Host {
 func (v *packet) xorMappedAddr() *Host {
 	for _, a := range v.attributes {
 		if (a.types == attribute_XOR_MAPPED_ADDRESS) || (a.types == attribute_XOR_MAPPED_ADDRESS_EXP) {
-			h := a.xorMappedAddr()
-			return h
+			return a.xorMappedAddr()
 		}
 	}
 	return nil
@@ -115,18 +119,21 @@ func (v *packet) xorMappedAddr() *Host {
 func (packet *packet) send(conn net.Conn) (*packet, error) {
 	timeout := 100
 	for i := 0; i < 9; i++ {
-		l, err := conn.Write(packet.bytes())
+		length, err := conn.Write(packet.bytes())
 		if err != nil {
 			return nil, err
+		}
+		if length != len(packet.bytes()) {
+			return nil, errors.New("Error in sending data.")
 		}
 		conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Millisecond))
 		if timeout < 1600 {
 			timeout *= 2
 		}
-		b := make([]byte, 1024)
-		l, err = conn.Read(b)
+		packetBytes := make([]byte, 1024)
+		length, err = conn.Read(packetBytes)
 		if err == nil {
-			return newPacketFromBytes(b[0:l]), nil
+			return newPacketFromBytes(packetBytes[0:length])
 		} else {
 			if !err.(net.Error).Timeout() {
 				return nil, err

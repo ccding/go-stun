@@ -31,7 +31,7 @@ func init() {
 	SetSoftwareName(DefaultSoftwareName)
 }
 
-// SetServerHost allows user to set the STUN hostname and port
+// SetServerHost allows user to set the STUN hostname and port.
 func SetServerHost(host string, port int) error {
 	ips, err := net.LookupHost(host)
 	if err != nil {
@@ -44,18 +44,18 @@ func SetServerHost(host string, port int) error {
 	return nil
 }
 
-// SetServerAddr allows user to set the transport layer STUN server address
+// SetServerAddr allows user to set the transport layer STUN server address.
 func SetServerAddr(address string) {
 	serverAddr = address
 }
 
-// SetSoftwareName allows user to set the name of her software
+// SetSoftwareName allows user to set the name of her software.
 func SetSoftwareName(name string) {
 	softwareName = name
 }
 
 // Discover contacts the STUN server and gets the response of NAT type, host
-// for UDP punching
+// for UDP punching.
 func Discover() (int, *Host, error) {
 	if serverAddr == "" {
 		err := SetServerHost(DefaultServerHost, DefaultServerPort)
