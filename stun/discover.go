@@ -122,19 +122,15 @@ func discover(serverAddr string) (NATType, *Host, error) {
 	if packet == nil {
 		return NAT_BLOCKED, nil, nil
 	}
-	if identical {
-		packet, err = test2(serverAddr)
-		if err != nil {
-			return NAT_ERROR, host, err
-		}
-		if packet != nil {
-			return NAT_NONE, host, nil
-		}
-		return NAT_SYMETRIC_UDP_FIREWALL, host, nil
-	}
 	packet, err = test2(serverAddr)
 	if err != nil {
 		return NAT_ERROR, host, err
+	}
+	if identical {
+		if packet == nil {
+			return NAT_SYMETRIC_UDP_FIREWALL, host, nil
+		}
+		return NAT_NONE, host, nil
 	}
 	if packet != nil {
 		return NAT_FULL, host, nil
