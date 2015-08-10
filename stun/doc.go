@@ -18,7 +18,7 @@
 //
 // It is extremely easy to use -- just one line of code.
 //
-// 	nat, host, err := stun.Discover()
+// 	nat, host, err := stun.NewClient().Discover()
 //
 // More details please go to `example.go`.
 package stun
