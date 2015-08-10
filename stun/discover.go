@@ -120,7 +120,7 @@ func discover(serverAddr string) (NATType, *Host, error) {
 		return NAT_ERROR, nil, err
 	}
 	if packet == nil {
-		return NAT_BLOCKED, nil, err
+		return NAT_BLOCKED, nil, nil
 	}
 	if identical {
 		packet, err = test2(serverAddr)
