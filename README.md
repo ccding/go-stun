@@ -18,4 +18,5 @@ func main() {
 }
 ```
 
-More details please go to `example.go`.
+More details please go to `example.go` and [GoDoc]
+(http://godoc.org/github.com/ccding/go-stun/stun)
