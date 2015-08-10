@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// author: Cong Ding <dinggnu@gmail.com>
+// Author: Cong Ding <dinggnu@gmail.com>
 
 // go-stun is a STUN (RFC 3489 and RFC 5389) client implementation in golang.
 //
