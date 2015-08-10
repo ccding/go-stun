@@ -114,6 +114,49 @@ func test3(serverAddr string) (*packet, error) {
 }
 
 // Follow RFC 3489 and RFC 5389.
+// Figure 2: Flow for type discovery process (from RFC 3489).
+//                        +--------+
+//                        |  Test  |
+//                        |   I    |
+//                        +--------+
+//                             |
+//                             |
+//                             V
+//                            /\              /\
+//                         N /  \ Y          /  \ Y             +--------+
+//          UDP     <-------/Resp\--------->/ IP \------------->|  Test  |
+//          Blocked         \ ?  /          \Same/              |   II   |
+//                           \  /            \? /               +--------+
+//                            \/              \/                    |
+//                                             | N                  |
+//                                             |                    V
+//                                             V                    /\
+//                                         +--------+  Sym.      N /  \
+//                                         |  Test  |  UDP    <---/Resp\
+//                                         |   II   |  Firewall   \ ?  /
+//                                         +--------+              \  /
+//                                             |                    \/
+//                                             V                     |Y
+//                  /\                         /\                    |
+//   Symmetric  N  /  \       +--------+   N  /  \                   V
+//      NAT  <--- / IP \<-----|  Test  |<--- /Resp\               Open
+//                \Same/      |   I    |     \ ?  /               Internet
+//                 \? /       +--------+      \  /
+//                  \/                         \/
+//                  |Y                          |Y
+//                  |                           |
+//                  |                           V
+//                  |                           Full
+//                  |                           Cone
+//                  V              /\
+//              +--------+        /  \ Y
+//              |  Test  |------>/Resp\---->Restricted
+//              |   III  |       \ ?  /
+//              +--------+        \  /
+//                                 \/
+//                                  |N
+//                                  |       Port
+//                                  +------>Restricted
 func discover(serverAddr string) (NATType, *Host, error) {
 	packet, changeAddr, identical, host, err := test1(serverAddr)
 	if err != nil {
