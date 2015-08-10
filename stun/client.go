@@ -49,7 +49,8 @@ func SetServerAddr(address string) {
 	serverAddr = address
 }
 
-// SetSoftwareName allows user to set the name of her software.
+// SetSoftwareName allows user to set the name of the software, which is used
+// for logging purpose (NOT used in the current implementation).
 func SetSoftwareName(name string) {
 	softwareName = name
 }
