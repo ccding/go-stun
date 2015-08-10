@@ -116,14 +116,14 @@ func (v *packet) xorMappedAddr() *Host {
 // of 100ms, doubling every retransmit until the interval reaches 1.6s.
 // Retransmissions continue with intervals of 1.6s until a response is
 // received, or a total of 9 requests have been sent.
-func (packet *packet) send(conn net.Conn) (*packet, error) {
+func (v *packet) send(conn net.Conn) (*packet, error) {
 	timeout := 100
 	for i := 0; i < 9; i++ {
-		length, err := conn.Write(packet.bytes())
+		length, err := conn.Write(v.bytes())
 		if err != nil {
 			return nil, err
 		}
-		if length != len(packet.bytes()) {
+		if length != len(v.bytes()) {
 			return nil, errors.New("Error in sending data.")
 		}
 		conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Millisecond))
