@@ -57,7 +57,7 @@ func SetSoftwareName(name string) {
 
 // Discover contacts the STUN server and gets the response of NAT type, host
 // for UDP punching.
-func Discover() (int, *Host, error) {
+func Discover() (NATType, *Host, error) {
 	if serverAddr == "" {
 		err := SetServerHost(DefaultServerHost, DefaultServerPort)
 		if err != nil {

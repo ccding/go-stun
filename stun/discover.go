@@ -118,7 +118,7 @@ func test3() (*packet, error) {
 }
 
 // follow rfc 3489 and 5389
-func discover() (int, *Host, error) {
+func discover() (NATType, *Host, error) {
 	packet, changeAddr, identical, host, err := test1(serverAddr)
 	if err != nil {
 		return NAT_ERROR, nil, err

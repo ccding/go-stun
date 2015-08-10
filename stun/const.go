@@ -27,8 +27,10 @@ const (
 	fingerprint = 0x5354554e
 )
 
+type NATType int
+
 const (
-	NAT_ERROR = iota
+	NAT_ERROR NATType = iota
 	NAT_UNKNOWN
 	NAT_NONE
 	NAT_BLOCKED
