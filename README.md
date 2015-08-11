@@ -14,7 +14,7 @@ It is extremely easy to use -- just one line of code.
 import "github.com/ccding/go-stun/stun"
 
 func main() {
-	nat, host, err := stun.Discover()
+	nat, host, err := stun.NewClient().Discover()
 }
 ```
 
