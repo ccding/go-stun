@@ -41,6 +41,30 @@ const (
 	NAT_SYMETRIC_UDP_FIREWALL
 )
 
+func (nat NATType) String() string {
+	switch nat {
+	case NAT_ERROR:
+		return "Test failed"
+	case NAT_UNKNOWN:
+		return "Unexpected response from the STUN server"
+	case NAT_BLOCKED:
+		return "UDP is blocked"
+	case NAT_FULL:
+		return "Full cone NAT"
+	case NAT_SYMETRIC:
+		return "Symetric NAT"
+	case NAT_RESTRICTED:
+		return "Restricted NAT"
+	case NAT_PORT_RESTRICTED:
+		return "Port restricted NAT"
+	case NAT_NONE:
+		return "Not behind a NAT"
+	case NAT_SYMETRIC_UDP_FIREWALL:
+		return "Symetric UDP firewall"
+	}
+	return "Unknown"
+}
+
 const (
 	error_TRY_ALTERNATE                  = 300
 	error_BAD_REQUEST                    = 400
