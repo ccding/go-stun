@@ -25,10 +25,18 @@ import (
 type Client struct {
 	serverAddr   string
 	softwareName string
+	conn         net.Conn
 }
 
 func NewClient() *Client {
 	c := new(Client)
+	c.SetSoftwareName(DefaultSoftwareName)
+	return c
+}
+
+func NewClientWithConnection(conn net.Conn) *Client {
+	c := new(Client)
+	c.conn = conn
 	c.SetSoftwareName(DefaultSoftwareName)
 	return c
 }
@@ -66,5 +74,13 @@ func (c *Client) Discover() (NATType, *Host, error) {
 			return NAT_ERROR, nil, err
 		}
 	}
-	return discover(c.serverAddr)
+	if c.conn == nil {
+		conn, err := net.Dial("udp", c.serverAddr)
+		if err != nil {
+			return NAT_ERROR, nil, err
+		}
+		c.conn = conn
+		defer conn.Close()
+	}
+	return discover(c.conn)
 }

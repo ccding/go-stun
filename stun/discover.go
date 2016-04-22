@@ -33,11 +33,7 @@ func align(n uint16) uint16 {
 	return (n + 3) & 0xfffc
 }
 
-func sendBindingReq(serverAddr string) (*packet, string, error) {
-	conn, err := net.Dial("udp", serverAddr)
-	if err != nil {
-		return nil, "", err
-	}
+func sendBindingReq(conn net.Conn) (*packet, string, error) {
 	// Construct packet.
 	packet := newPacket()
 	packet.types = type_BINDING_REQUEST
@@ -47,19 +43,14 @@ func sendBindingReq(serverAddr string) (*packet, string, error) {
 	packet.addAttribute(*attribute)
 	// Send packet.
 	localAddr := conn.LocalAddr().String()
-	packet, err = packet.send(conn)
+	packet, err := packet.send(conn)
 	if err != nil {
 		return nil, "", err
 	}
-	err = conn.Close()
-	return packet, localAddr, err
+	return packet, localAddr, nil
 }
 
-func sendChangeReq(serverAddr string, changeIP bool, changePort bool) (*packet, error) {
-	conn, err := net.Dial("udp", serverAddr)
-	if err != nil {
-		return nil, err
-	}
+func sendChangeReq(conn net.Conn, changeIP bool, changePort bool) (*packet, error) {
 	// Construct packet.
 	packet := newPacket()
 	packet.types = type_BINDING_REQUEST
@@ -70,16 +61,15 @@ func sendChangeReq(serverAddr string, changeIP bool, changePort bool) (*packet, 
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
 	// Send packet.
-	packet, err = packet.send(conn)
+	packet, err := packet.send(conn)
 	if err != nil {
 		return nil, err
 	}
-	err = conn.Close()
-	return packet, err
+	return packet, nil
 }
 
-func test1(serverAddr string) (*packet, string, bool, *Host, error) {
-	packet, localAddr, err := sendBindingReq(serverAddr)
+func test1(conn net.Conn) (*packet, string, bool, *Host, error) {
+	packet, localAddr, err := sendBindingReq(conn)
 	if err != nil {
 		return nil, "", false, nil, err
 	}
@@ -105,12 +95,12 @@ func test1(serverAddr string) (*packet, string, bool, *Host, error) {
 	return packet, changeAddr, identical, hostMappedAddr, nil
 }
 
-func test2(serverAddr string) (*packet, error) {
-	return sendChangeReq(serverAddr, true, true)
+func test2(conn net.Conn) (*packet, error) {
+	return sendChangeReq(conn, true, true)
 }
 
-func test3(serverAddr string) (*packet, error) {
-	return sendChangeReq(serverAddr, false, true)
+func test3(conn net.Conn) (*packet, error) {
+	return sendChangeReq(conn, false, true)
 }
 
 // Follow RFC 3489 and RFC 5389.
@@ -157,15 +147,15 @@ func test3(serverAddr string) (*packet, error) {
 //                                  |N
 //                                  |       Port
 //                                  +------>Restricted
-func discover(serverAddr string) (NATType, *Host, error) {
-	packet, changeAddr, identical, host, err := test1(serverAddr)
+func discover(conn net.Conn) (NATType, *Host, error) {
+	packet, changeAddr, identical, host, err := test1(conn)
 	if err != nil {
 		return NAT_ERROR, nil, err
 	}
 	if packet == nil {
 		return NAT_BLOCKED, nil, nil
 	}
-	packet, err = test2(serverAddr)
+	packet, err = test2(conn)
 	if err != nil {
 		return NAT_ERROR, host, err
 	}
@@ -178,7 +168,13 @@ func discover(serverAddr string) (NATType, *Host, error) {
 	if packet != nil {
 		return NAT_FULL, host, nil
 	}
-	packet, _, identical, _, err = test1(changeAddr)
+
+	otherConn, err := net.Dial("udp", changeAddr)
+	if err != nil {
+		return NAT_ERROR, nil, err
+	}
+
+	packet, _, identical, _, err = test1(otherConn)
 	if err != nil {
 		return NAT_ERROR, host, err
 	}
@@ -188,7 +184,7 @@ func discover(serverAddr string) (NATType, *Host, error) {
 		return NAT_UNKNOWN, host, nil
 	}
 	if identical {
-		packet, err = test3(serverAddr)
+		packet, err = test3(conn)
 		if err != nil {
 			return NAT_ERROR, host, err
 		}
