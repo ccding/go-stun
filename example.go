@@ -28,11 +28,11 @@ func main() {
 		fmt.Println(err)
 	}
 
-	fmt.Println(nat)
+	fmt.Println("NAT Type:", nat)
 
 	if host != nil {
-		fmt.Println(host.Family())
-		fmt.Println(host.IP())
-		fmt.Println(host.Port())
+		fmt.Println("External IP Family:", host.Family())
+		fmt.Println("External IP:", host.IP())
+		fmt.Println("External Port:", host.Port())
 	}
 }
