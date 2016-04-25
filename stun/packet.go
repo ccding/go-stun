@@ -17,6 +17,7 @@
 package stun
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"net"
@@ -34,6 +35,7 @@ type packet struct {
 func newPacket() *packet {
 	v := new(packet)
 	v.id = make([]byte, 12)
+	rand.Read(v.id)
 	v.attributes = make([]attribute, 0, 10)
 	v.cookie = magicCookie
 	v.length = 0
@@ -116,10 +118,10 @@ func (v *packet) xorMappedAddr() *Host {
 // of 100ms, doubling every retransmit until the interval reaches 1.6s.
 // Retransmissions continue with intervals of 1.6s until a response is
 // received, or a total of 9 requests have been sent.
-func (v *packet) send(conn net.Conn) (*packet, error) {
+func (v *packet) send(conn net.PacketConn, addr net.Addr) (*packet, error) {
 	timeout := 100
 	for i := 0; i < 9; i++ {
-		length, err := conn.Write(v.bytes())
+		length, err := conn.WriteTo(v.bytes(), addr)
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +133,7 @@ func (v *packet) send(conn net.Conn) (*packet, error) {
 			timeout *= 2
 		}
 		packetBytes := make([]byte, 1024)
-		length, err = conn.Read(packetBytes)
+		length, _, err = conn.ReadFrom(packetBytes)
 		if err == nil {
 			return newPacketFromBytes(packetBytes[0:length])
 		} else {

@@ -25,7 +25,7 @@ import (
 type Client struct {
 	serverAddr   string
 	softwareName string
-	conn         net.Conn
+	conn         net.PacketConn
 }
 
 func NewClient() *Client {
@@ -34,7 +34,9 @@ func NewClient() *Client {
 	return c
 }
 
-func NewClientWithConnection(conn net.Conn) *Client {
+// NewClientWithConnection returns a client which uses the given connection.
+// Please note the connection should be acquired via net.Listen* method.
+func NewClientWithConnection(conn net.PacketConn) *Client {
 	c := new(Client)
 	c.conn = conn
 	c.SetSoftwareName(DefaultSoftwareName)
@@ -74,13 +76,17 @@ func (c *Client) Discover() (NATType, *Host, error) {
 			return NAT_ERROR, nil, err
 		}
 	}
+	addr, err := net.ResolveUDPAddr("udp", c.serverAddr)
+	if err != nil {
+		return NAT_ERROR, nil, err
+	}
 	if c.conn == nil {
-		conn, err := net.Dial("udp", c.serverAddr)
+		conn, err := net.ListenUDP("udp", nil)
 		if err != nil {
 			return NAT_ERROR, nil, err
 		}
 		c.conn = conn
 		defer conn.Close()
 	}
-	return discover(c.conn)
+	return discover(c.conn, addr, c.softwareName)
 }

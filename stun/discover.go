@@ -33,48 +33,78 @@ func align(n uint16) uint16 {
 	return (n + 3) & 0xfffc
 }
 
-func sendBindingReq(conn net.Conn) (*packet, string, error) {
-	// Construct packet.
-	packet := newPacket()
-	packet.types = type_BINDING_REQUEST
-	attribute := newSoftwareAttribute(packet, DefaultSoftwareName)
-	packet.addAttribute(*attribute)
-	attribute = newFingerprintAttribute(packet)
-	packet.addAttribute(*attribute)
-	// Send packet.
-	localAddr := conn.LocalAddr().String()
-	packet, err := packet.send(conn)
+func isLocalAddress(local, localRemote string) bool {
+	// Resolve the IP returned by the STUN server first.
+	localRemoteAddr, err := net.ResolveUDPAddr("udp", localRemote)
 	if err != nil {
-		return nil, "", err
+		return false
 	}
-	return packet, localAddr, nil
+
+	// Try comparing with the local address on the socket first, but only if
+	// it's actually specified.
+	addr, err := net.ResolveUDPAddr("udp", local)
+	if err == nil && addr.IP != nil && !addr.IP.IsUnspecified() {
+		return addr.IP.Equal(localRemoteAddr.IP)
+	}
+
+	// Fallback to checking IPs of all interfaces
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return false
+	}
+	for _, addr := range addrs {
+		ip, _, err := net.ParseCIDR(addr.String())
+		if err != nil {
+			continue
+		}
+		if ip.Equal(localRemoteAddr.IP) {
+			return true
+		}
+	}
+	return false
 }
 
-func sendChangeReq(conn net.Conn, changeIP bool, changePort bool) (*packet, error) {
+func sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, error) {
 	// Construct packet.
 	packet := newPacket()
 	packet.types = type_BINDING_REQUEST
-	attribute := newSoftwareAttribute(packet, DefaultSoftwareName)
-	packet.addAttribute(*attribute)
-	attribute = newChangeReqAttribute(packet, changeIP, changePort)
+	attribute := newSoftwareAttribute(packet, softwareName)
 	packet.addAttribute(*attribute)
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
 	// Send packet.
-	packet, err := packet.send(conn)
+	packet, err := packet.send(conn, addr)
 	if err != nil {
 		return nil, err
 	}
 	return packet, nil
 }
 
-func test1(conn net.Conn) (*packet, string, bool, *Host, error) {
-	packet, localAddr, err := sendBindingReq(conn)
+func sendChangeReq(conn net.PacketConn, addr net.Addr, softwareName string, changeIP bool, changePort bool) (*packet, error) {
+	// Construct packet.
+	packet := newPacket()
+	packet.types = type_BINDING_REQUEST
+	attribute := newSoftwareAttribute(packet, softwareName)
+	packet.addAttribute(*attribute)
+	attribute = newChangeReqAttribute(packet, changeIP, changePort)
+	packet.addAttribute(*attribute)
+	attribute = newFingerprintAttribute(packet)
+	packet.addAttribute(*attribute)
+	// Send packet.
+	packet, err := packet.send(conn, addr)
 	if err != nil {
-		return nil, "", false, nil, err
+		return nil, err
+	}
+	return packet, nil
+}
+
+func test1(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, net.Addr, bool, *Host, error) {
+	packet, err := sendBindingReq(conn, addr, softwareName)
+	if err != nil {
+		return nil, nil, false, nil, err
 	}
 	if packet == nil {
-		return nil, "", false, nil, nil
+		return nil, nil, false, nil, nil
 	}
 
 	// RFC 3489 doesn't require the server return XOR mapped address.
@@ -82,25 +112,29 @@ func test1(conn net.Conn) (*packet, string, bool, *Host, error) {
 	if hostMappedAddr == nil {
 		hostMappedAddr = packet.mappedAddr()
 		if hostMappedAddr == nil {
-			return nil, "", false, nil, errors.New("No mapped address.")
+			return nil, nil, false, nil, errors.New("No mapped address.")
 		}
 	}
 
 	hostChangedAddr := packet.changedAddr()
 	if hostChangedAddr == nil {
-		return nil, "", false, nil, errors.New("No changed address.")
+		return nil, nil, false, nil, errors.New("No changed address.")
 	}
-	changeAddr := hostChangedAddr.TransportAddr()
-	identical := localAddr == hostMappedAddr.TransportAddr()
+	changeAddrStr := hostChangedAddr.TransportAddr()
+	changeAddr, err := net.ResolveUDPAddr("udp", changeAddrStr)
+	if err != nil {
+		return nil, nil, false, nil, errors.New("Failed to resolve changed address.")
+	}
+	identical := isLocalAddress(conn.LocalAddr().String(), hostMappedAddr.TransportAddr())
 	return packet, changeAddr, identical, hostMappedAddr, nil
 }
 
-func test2(conn net.Conn) (*packet, error) {
-	return sendChangeReq(conn, true, true)
+func test2(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, error) {
+	return sendChangeReq(conn, addr, softwareName, true, true)
 }
 
-func test3(conn net.Conn) (*packet, error) {
-	return sendChangeReq(conn, false, true)
+func test3(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, error) {
+	return sendChangeReq(conn, addr, softwareName, false, true)
 }
 
 // Follow RFC 3489 and RFC 5389.
@@ -147,15 +181,15 @@ func test3(conn net.Conn) (*packet, error) {
 //                                  |N
 //                                  |       Port
 //                                  +------>Restricted
-func discover(conn net.Conn) (NATType, *Host, error) {
-	packet, changeAddr, identical, host, err := test1(conn)
+func discover(conn net.PacketConn, addr net.Addr, softwareName string) (NATType, *Host, error) {
+	packet, changeAddr, identical, host, err := test1(conn, addr, softwareName)
 	if err != nil {
 		return NAT_ERROR, nil, err
 	}
 	if packet == nil {
 		return NAT_BLOCKED, nil, nil
 	}
-	packet, err = test2(conn)
+	packet, err = test2(conn, addr, softwareName)
 	if err != nil {
 		return NAT_ERROR, host, err
 	}
@@ -169,12 +203,12 @@ func discover(conn net.Conn) (NATType, *Host, error) {
 		return NAT_FULL, host, nil
 	}
 
-	otherConn, err := net.Dial("udp", changeAddr)
+	otherConn, err := net.ListenUDP("udp", nil)
 	if err != nil {
 		return NAT_ERROR, nil, err
 	}
 
-	packet, _, identical, _, err = test1(otherConn)
+	packet, _, identical, _, err = test1(otherConn, changeAddr, softwareName)
 	if err != nil {
 		return NAT_ERROR, host, err
 	}
@@ -184,7 +218,7 @@ func discover(conn net.Conn) (NATType, *Host, error) {
 		return NAT_UNKNOWN, host, nil
 	}
 	if identical {
-		packet, err = test3(conn)
+		packet, err = test3(conn, addr, softwareName)
 		if err != nil {
 			return NAT_ERROR, host, err
 		}
