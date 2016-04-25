@@ -72,7 +72,7 @@ func (v *attribute) xorMappedAddr() *Host {
 	if family == attribute_FAMILY_IPV4 {
 		xorIP = xorIP[:4]
 	}
-	return &Host{family, net.IP(xorIP).String(), port ^ (magicCookie >> 32)}
+	return &Host{family, net.IP(xorIP).String(), port ^ (magicCookie >> 16)}
 }
 
 func (v *attribute) address() *Host {
