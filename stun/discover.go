@@ -116,16 +116,17 @@ func test1(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, ne
 		}
 	}
 
+	identical := isLocalAddress(conn.LocalAddr().String(), hostMappedAddr.TransportAddr())
+
 	hostChangedAddr := packet.changedAddr()
 	if hostChangedAddr == nil {
-		return nil, nil, false, nil, errors.New("No changed address.")
+		return packet, nil, identical, hostMappedAddr, nil
 	}
 	changeAddrStr := hostChangedAddr.TransportAddr()
 	changeAddr, err := net.ResolveUDPAddr("udp", changeAddrStr)
 	if err != nil {
 		return nil, nil, false, nil, errors.New("Failed to resolve changed address.")
 	}
-	identical := isLocalAddress(conn.LocalAddr().String(), hostMappedAddr.TransportAddr())
 	return packet, changeAddr, identical, hostMappedAddr, nil
 }
 
@@ -206,6 +207,10 @@ func discover(conn net.PacketConn, addr net.Addr, softwareName string) (NATType,
 	otherConn, err := net.ListenUDP("udp", nil)
 	if err != nil {
 		return NAT_ERROR, nil, err
+	}
+
+	if changeAddr == nil {
+		return NAT_ERROR, host, errors.New("No changed address.")
 	}
 
 	packet, _, identical, _, err = test1(otherConn, changeAddr, softwareName)
