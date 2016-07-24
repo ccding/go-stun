@@ -23,9 +23,10 @@ import (
 )
 
 type Client struct {
-	serverAddr   string
-	softwareName string
-	conn         net.PacketConn
+	serverAddr    string
+	softwareName  string
+	conn          net.PacketConn
+	serverUDPAddr *net.UDPAddr
 }
 
 // NewClient returns a client without network connection. The network
@@ -69,6 +70,16 @@ func (c *Client) SetSoftwareName(name string) {
 	c.softwareName = name
 }
 
+// Reset cleans the network connections in the client. If error occurs when
+// calling Discover, users can call Reset then retry Discover.
+func (c *Client) Reset() {
+	c.serverUDPAddr = nil
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
+}
+
 // Discover contacts the STUN server and gets the response of NAT type, host
 // for UDP punching.
 func (c *Client) Discover() (NATType, *Host, error) {
@@ -78,9 +89,12 @@ func (c *Client) Discover() (NATType, *Host, error) {
 			return NAT_ERROR, nil, err
 		}
 	}
-	addr, err := net.ResolveUDPAddr("udp", c.serverAddr)
-	if err != nil {
-		return NAT_ERROR, nil, err
+	if c.serverUDPAddr == nil {
+		addr, err := net.ResolveUDPAddr("udp", c.serverAddr)
+		if err != nil {
+			return NAT_ERROR, nil, err
+		}
+		c.serverUDPAddr = addr
 	}
 	if c.conn == nil {
 		conn, err := net.ListenUDP("udp", nil)
@@ -89,5 +103,5 @@ func (c *Client) Discover() (NATType, *Host, error) {
 		}
 		c.conn = conn
 	}
-	return discover(c.conn, addr, c.softwareName)
+	return discover(c.conn, c.serverUDPAddr, c.softwareName)
 }
