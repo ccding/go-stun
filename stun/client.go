@@ -28,6 +28,8 @@ type Client struct {
 	conn         net.PacketConn
 }
 
+// NewClient returns a client without network connection. The network
+// connection will be build when calling Discover function.
 func NewClient() *Client {
 	c := new(Client)
 	c.SetSoftwareName(DefaultSoftwareName)
@@ -76,17 +78,18 @@ func (c *Client) Discover() (NATType, *Host, error) {
 			return NAT_ERROR, nil, err
 		}
 	}
+
 	addr, err := net.ResolveUDPAddr("udp", c.serverAddr)
 	if err != nil {
 		return NAT_ERROR, nil, err
 	}
-	if c.conn == nil {
-		conn, err := net.ListenUDP("udp", nil)
-		if err != nil {
-			return NAT_ERROR, nil, err
-		}
-		c.conn = conn
-		defer conn.Close()
+
+	conn, err := net.ListenUDP("udp", nil)
+	if err != nil {
+		return NAT_ERROR, nil, err
 	}
+	c.conn = conn
+	defer conn.Close()
+
 	return discover(c.conn, addr, c.softwareName)
 }
