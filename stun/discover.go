@@ -204,13 +204,13 @@ func discover(conn net.PacketConn, addr net.Addr, softwareName string) (NATType,
 		return NAT_FULL, host, nil
 	}
 
+	if changeAddr == nil {
+		return NAT_ERROR, host, errors.New("No changed address.")
+	}
+
 	otherConn, err := net.ListenUDP("udp", nil)
 	if err != nil {
 		return NAT_ERROR, nil, err
-	}
-
-	if changeAddr == nil {
-		return NAT_ERROR, host, errors.New("No changed address.")
 	}
 
 	packet, _, identical, _, err = test1(otherConn, changeAddr, softwareName)
