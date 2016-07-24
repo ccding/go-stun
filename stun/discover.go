@@ -122,12 +122,12 @@ func test1(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, ne
 	if hostChangedAddr == nil {
 		return packet, nil, identical, hostMappedAddr, nil
 	}
-	changeAddrStr := hostChangedAddr.TransportAddr()
-	changeAddr, err := net.ResolveUDPAddr("udp", changeAddrStr)
+	changedAddrStr := hostChangedAddr.TransportAddr()
+	changedAddr, err := net.ResolveUDPAddr("udp", changedAddrStr)
 	if err != nil {
 		return nil, nil, false, nil, errors.New("Failed to resolve changed address.")
 	}
-	return packet, changeAddr, identical, hostMappedAddr, nil
+	return packet, changedAddr, identical, hostMappedAddr, nil
 }
 
 func test2(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, error) {
@@ -183,7 +183,7 @@ func test3(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, er
 //                                  |       Port
 //                                  +------>Restricted
 func discover(conn net.PacketConn, addr net.Addr, softwareName string) (NATType, *Host, error) {
-	packet, changeAddr, identical, host, err := test1(conn, addr, softwareName)
+	packet, changedAddr, identical, host, err := test1(conn, addr, softwareName)
 	if err != nil {
 		return NAT_ERROR, nil, err
 	}
@@ -204,7 +204,7 @@ func discover(conn net.PacketConn, addr net.Addr, softwareName string) (NATType,
 		return NAT_FULL, host, nil
 	}
 
-	if changeAddr == nil {
+	if changedAddr == nil {
 		return NAT_ERROR, host, errors.New("No changed address.")
 	}
 
@@ -213,7 +213,7 @@ func discover(conn net.PacketConn, addr net.Addr, softwareName string) (NATType,
 		return NAT_ERROR, nil, err
 	}
 
-	packet, _, identical, _, err = test1(otherConn, changeAddr, softwareName)
+	packet, _, identical, _, err = test1(otherConn, changedAddr, softwareName)
 	if err != nil {
 		return NAT_ERROR, host, err
 	}
