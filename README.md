@@ -5,6 +5,8 @@ go-stun
 (https://travis-ci.org/ccding/go-stun)
 [![GoDoc](https://godoc.org/github.com/ccding/go-stun?status.svg)]
 (http://godoc.org/github.com/ccding/go-stun/stun)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ccding/go-stun)]
+(https://goreportcard.com/report/github.com/ccding/go-stun)
 
 go-stun is a STUN (RFC 3489, 5389) client implementation in golang.
 
