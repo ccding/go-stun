@@ -16,6 +16,7 @@
 
 package stun
 
+// Default server address and client name.
 const (
 	DefaultServerHost   = "stun1.l.google.com"
 	DefaultServerPort   = 19302
@@ -27,8 +28,10 @@ const (
 	fingerprint = 0x5354554e
 )
 
+// The type of NAT.
 type NATType int
 
+// NAT types.
 const (
 	NAT_ERROR NATType = iota
 	NAT_UNKNOWN

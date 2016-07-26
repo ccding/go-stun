@@ -21,24 +21,29 @@ import (
 	"strconv"
 )
 
+// The network address as a host.
 type Host struct {
 	family uint16
 	ip     string
 	port   uint16
 }
 
+// Family returns the family type of a host (IPv4 or IPv6).
 func (h *Host) Family() uint16 {
 	return h.family
 }
 
+// IP returns the internet protocol address of the host.
 func (h *Host) IP() string {
 	return h.ip
 }
 
+// Port returns the port number of the host.
 func (h *Host) Port() uint16 {
 	return h.port
 }
 
+// TransportAddr returns the transport layer address of the host.
 func (h *Host) TransportAddr() string {
 	return net.JoinHostPort(h.ip, strconv.Itoa(int(h.port)))
 }

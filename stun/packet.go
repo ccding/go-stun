@@ -136,10 +136,9 @@ func (v *packet) send(conn net.PacketConn, addr net.Addr) (*packet, error) {
 		length, _, err = conn.ReadFrom(packetBytes)
 		if err == nil {
 			return newPacketFromBytes(packetBytes[0:length])
-		} else {
-			if !err.(net.Error).Timeout() {
-				return nil, err
-			}
+		}
+		if !err.(net.Error).Timeout() {
+			return nil, err
 		}
 	}
 	return nil, nil

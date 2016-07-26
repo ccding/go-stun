@@ -14,7 +14,8 @@
 //
 // Author: Cong Ding <dinggnu@gmail.com>
 
-// go-stun is a STUN (RFC 3489 and RFC 5389) client implementation in golang.
+// Package github.com/ccding/go-stun/stun is a STUN (RFC 3489 and RFC 5389)
+// client implementation in golang.
 //
 // It is extremely easy to use -- just one line of code.
 //

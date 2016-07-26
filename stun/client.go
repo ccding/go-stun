@@ -22,6 +22,8 @@ import (
 	"strconv"
 )
 
+// Client is a STUN client, which can be set STUN server address and is used
+// to discover NAT type.
 type Client struct {
 	serverAddr    string
 	softwareName  string
