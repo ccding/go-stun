@@ -7,6 +7,8 @@ go-stun
 (http://godoc.org/github.com/ccding/go-stun/stun)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ccding/go-stun)]
 (https://goreportcard.com/report/github.com/ccding/go-stun)
+[![License](https://img.shields.io/badge/License-Apache%202.0-red.svg)]
+(https://opensource.org/licenses/Apache-2.0)
 
 go-stun is a STUN (RFC 3489, 5389) client implementation in golang.
 
