@@ -32,21 +32,27 @@ type packet struct {
 	attributes []attribute
 }
 
-func newPacket() *packet {
+func newPacket() (*packet, error) {
 	v := new(packet)
 	v.id = make([]byte, 12)
-	rand.Read(v.id)
+	_, err := rand.Read(v.id)
+	if err != nil {
+		return nil, err
+	}
 	v.attributes = make([]attribute, 0, 10)
 	v.cookie = magicCookie
 	v.length = 0
-	return v
+	return v, nil
 }
 
 func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 	if len(packetBytes) < 24 {
 		return nil, errors.New("Received data length too short.")
 	}
-	packet := newPacket()
+	packet, err := newPacket()
+	if err != nil {
+		return nil, err
+	}
 	packet.types = binary.BigEndian.Uint16(packetBytes[0:2])
 	packet.length = binary.BigEndian.Uint16(packetBytes[2:4])
 	packet.cookie = binary.BigEndian.Uint32(packetBytes[4:8])
@@ -128,7 +134,10 @@ func (v *packet) send(conn net.PacketConn, addr net.Addr) (*packet, error) {
 		if length != len(v.bytes()) {
 			return nil, errors.New("Error in sending data.")
 		}
-		conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Millisecond))
+		err = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Millisecond))
+		if err != nil {
+			return nil, err
+		}
 		if timeout < 1600 {
 			timeout *= 2
 		}

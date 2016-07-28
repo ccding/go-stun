@@ -66,14 +66,17 @@ func isLocalAddress(local, localRemote string) bool {
 
 func sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, error) {
 	// Construct packet.
-	packet := newPacket()
+	packet, err := newPacket()
+	if err != nil {
+		return nil, err
+	}
 	packet.types = type_BINDING_REQUEST
 	attribute := newSoftwareAttribute(packet, softwareName)
 	packet.addAttribute(*attribute)
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
 	// Send packet.
-	packet, err := packet.send(conn, addr)
+	packet, err = packet.send(conn, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +85,10 @@ func sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string) (*p
 
 func sendChangeReq(conn net.PacketConn, addr net.Addr, softwareName string, changeIP bool, changePort bool) (*packet, error) {
 	// Construct packet.
-	packet := newPacket()
+	packet, err := newPacket()
+	if err != nil {
+		return nil, err
+	}
 	packet.types = type_BINDING_REQUEST
 	attribute := newSoftwareAttribute(packet, softwareName)
 	packet.addAttribute(*attribute)
@@ -91,7 +97,7 @@ func sendChangeReq(conn net.PacketConn, addr net.Addr, softwareName string, chan
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
 	// Send packet.
-	packet, err := packet.send(conn, addr)
+	packet, err = packet.send(conn, addr)
 	if err != nil {
 		return nil, err
 	}
