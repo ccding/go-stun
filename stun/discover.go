@@ -188,7 +188,7 @@ func test3(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, er
 //                                  |N
 //                                  |       Port
 //                                  +------>Restricted
-func discover(conn net.PacketConn, addr net.Addr, softwareName string, logger *StunLogger) (NATType, *Host, error) {
+func discover(conn net.PacketConn, addr net.Addr, softwareName string, logger *Logger) (NATType, *Host, error) {
 	logger.Debug("Do Test1")
 	logger.Debug("Send To: ", addr)
 	packet, changedAddr, identical, host, err := test1(conn, addr, softwareName)

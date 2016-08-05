@@ -27,7 +27,7 @@ const (
 	fingerprint = 0x5354554e
 )
 
-// The type of NAT.
+// NATType is the type of NAT described by int.
 type NATType int
 
 // NAT types.

@@ -27,7 +27,7 @@ type Client struct {
 	serverAddr   string
 	softwareName string
 	conn         net.PacketConn
-	logger       *StunLogger
+	logger       *Logger
 }
 
 // NewClient returns a client without network connection. The network
@@ -35,7 +35,7 @@ type Client struct {
 func NewClient() *Client {
 	c := new(Client)
 	c.SetSoftwareName(DefaultSoftwareName)
-	c.logger = NewStunLogger()
+	c.logger = NewLogger()
 	return c
 }
 
@@ -45,7 +45,7 @@ func NewClientWithConnection(conn net.PacketConn) *Client {
 	c := new(Client)
 	c.conn = conn
 	c.SetSoftwareName(DefaultSoftwareName)
-	c.logger = NewStunLogger()
+	c.logger = NewLogger()
 	return c
 }
 
