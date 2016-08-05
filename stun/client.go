@@ -25,10 +25,9 @@ import (
 // Client is a STUN client, which can be set STUN server address and is used
 // to discover NAT type.
 type Client struct {
-	serverAddr    string
-	softwareName  string
-	conn          net.PacketConn
-	serverUDPAddr *net.UDPAddr
+	serverAddr   string
+	softwareName string
+	conn         net.PacketConn
 }
 
 // NewClient returns a client without network connection. The network
@@ -81,16 +80,13 @@ func (c *Client) Discover() (NATType, *Host, error) {
 			return NAT_ERROR, nil, err
 		}
 	}
-	if c.serverUDPAddr == nil {
-		addr, err := net.ResolveUDPAddr("udp", c.serverAddr)
-		if err != nil {
-			return NAT_ERROR, nil, err
-		}
-		c.serverUDPAddr = addr
+	serverUDPAddr, err := net.ResolveUDPAddr("udp", c.serverAddr)
+	if err != nil {
+		return NAT_ERROR, nil, err
 	}
 	// Use the connection passed to the client.
 	if c.conn != nil {
-		return discover(c.conn, c.serverUDPAddr, c.softwareName)
+		return discover(c.conn, serverUDPAddr, c.softwareName)
 	}
 	// Otherwise create a connection and close it at the end.
 	conn, err := net.ListenUDP("udp", nil)
@@ -98,5 +94,5 @@ func (c *Client) Discover() (NATType, *Host, error) {
 		return NAT_ERROR, nil, err
 	}
 	defer conn.Close()
-	return discover(conn, c.serverUDPAddr, c.softwareName)
+	return discover(conn, serverUDPAddr, c.softwareName)
 }
