@@ -10,7 +10,15 @@ go-stun
 [![Go Report Card](https://goreportcard.com/badge/github.com/ccding/go-stun)]
 (https://goreportcard.com/report/github.com/ccding/go-stun)
 
-go-stun is a STUN (RFC 3489, 5389) client implementation in golang.
+go-stun is a STUN (RFC 3489, 5389) client implementation in golang
+(a.k.a. UDP hole punching).
+
+[RFC 3489](https://tools.ietf.org/html/rfc3489):
+STUN - Simple Traversal of User Datagram Protocol (UDP)
+Through Network Address Translators (NATs)
+
+[RFC 5389](https://tools.ietf.org/html/rfc5389):
+Session Traversal Utilities for NAT (STUN)
 
 ### Use the Command Line Tool
 
