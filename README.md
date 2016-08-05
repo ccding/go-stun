@@ -39,7 +39,7 @@ External IP Family: 1
 External IP: 166.111.4.100
 External Port: 23009
 ```
-Use can use `-s` flag to use another STUN server, and use `-v` to work on
+You can use `-s` flag to use another STUN server, and use `-v` to work on
 verbose mode.
 ```bash
 > ./go-stun --help
