@@ -27,6 +27,7 @@ type Client struct {
 	serverAddr   string
 	softwareName string
 	conn         net.PacketConn
+	logger       *StunLogger
 }
 
 // NewClient returns a client without network connection. The network
@@ -34,6 +35,7 @@ type Client struct {
 func NewClient() *Client {
 	c := new(Client)
 	c.SetSoftwareName(DefaultSoftwareName)
+	c.logger = NewStunLogger()
 	return c
 }
 
@@ -43,7 +45,14 @@ func NewClientWithConnection(conn net.PacketConn) *Client {
 	c := new(Client)
 	c.conn = conn
 	c.SetSoftwareName(DefaultSoftwareName)
+	c.logger = NewStunLogger()
 	return c
+}
+
+// SetVerbose sets the client to be in the verbose mode, which prints
+// information in the discover process.
+func (c *Client) SetVerbose(verbose bool) {
+	c.logger.SetDebug(verbose)
 }
 
 // SetServerHost allows user to set the STUN hostname and port.
@@ -72,15 +81,15 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	if err != nil {
 		return NAT_ERROR, nil, err
 	}
-	// Use the connection passed to the client.
-	if c.conn != nil {
-		return discover(c.conn, serverUDPAddr, c.softwareName)
+	// Use the connection passed to the client if it is not nil, otherwise
+	// create a connection and close it at the end.
+	conn := c.conn
+	if conn == nil {
+		conn, err = net.ListenUDP("udp", nil)
+		if err != nil {
+			return NAT_ERROR, nil, err
+		}
+		defer conn.Close()
 	}
-	// Otherwise create a connection and close it at the end.
-	conn, err := net.ListenUDP("udp", nil)
-	if err != nil {
-		return NAT_ERROR, nil, err
-	}
-	defer conn.Close()
-	return discover(conn, serverUDPAddr, c.softwareName)
+	return discover(conn, serverUDPAddr, c.softwareName, c.logger)
 }

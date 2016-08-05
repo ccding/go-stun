@@ -188,18 +188,25 @@ func test3(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, er
 //                                  |N
 //                                  |       Port
 //                                  +------>Restricted
-func discover(conn net.PacketConn, addr net.Addr, softwareName string) (NATType, *Host, error) {
+func discover(conn net.PacketConn, addr net.Addr, softwareName string, logger *StunLogger) (NATType, *Host, error) {
+	logger.Debug("Do Test1")
+	logger.Debug("Send To: ", addr)
 	packet, changedAddr, identical, host, err := test1(conn, addr, softwareName)
 	if err != nil {
 		return NAT_ERROR, nil, err
 	}
+	logger.Debugf("Received: {isNil:%v}", packet == nil)
 	if packet == nil {
 		return NAT_BLOCKED, nil, nil
 	}
+	logger.Debugf("Received: {changedAddr:'%v', identical:'%v', host:'%v:%v'}", changedAddr, identical, host.ip, host.port)
+	logger.Debug("Do Test2")
+	logger.Debug("Send To: ", addr)
 	packet, err = test2(conn, addr, softwareName)
 	if err != nil {
 		return NAT_ERROR, host, err
 	}
+	logger.Debugf("Received: {isNil:%v}", packet == nil)
 	if identical {
 		if packet == nil {
 			return NAT_SYMETRIC_UDP_FIREWALL, host, nil
@@ -209,30 +216,35 @@ func discover(conn net.PacketConn, addr net.Addr, softwareName string) (NATType,
 	if packet != nil {
 		return NAT_FULL, host, nil
 	}
-
 	if changedAddr == nil {
 		return NAT_ERROR, host, errors.New("No changed address.")
 	}
-
 	otherConn, err := net.ListenUDP("udp", nil)
 	if err != nil {
 		return NAT_ERROR, nil, err
 	}
-
+	defer otherConn.Close()
+	logger.Debug("Do Test1")
+	logger.Debug("Send To: ", changedAddr)
 	packet, _, identical, _, err = test1(otherConn, changedAddr, softwareName)
 	if err != nil {
 		return NAT_ERROR, host, err
 	}
+	logger.Debugf("Received: {isNil:%v}", packet == nil)
 	if packet == nil {
 		// It should be NAT_BLOCKED, but will be detected in the first
 		// step. So this will never happen.
 		return NAT_UNKNOWN, host, nil
 	}
+	logger.Debugf("Received: {identical: '%v'}", identical)
 	if identical {
+		logger.Debug("Do Test3")
+		logger.Debug("Send To: ", addr)
 		packet, err = test3(conn, addr, softwareName)
 		if err != nil {
 			return NAT_ERROR, host, err
 		}
+		logger.Debug("Received: {isNil:%v}", packet == nil)
 		if packet == nil {
 			return NAT_PORT_RESTRICTED, host, nil
 		}

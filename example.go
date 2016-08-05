@@ -17,19 +17,27 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"log"
 
 	"github.com/ccding/go-stun/stun"
 )
 
 func main() {
-	nat, host, err := stun.NewClient().Discover()
+	var serverAddr = flag.String("s", stun.DefaultServerAddr, "server address")
+	var verbose = flag.Bool("v", false, "verbose mode")
+	flag.Parse()
+
+	client := stun.NewClient()
+	client.SetServerAddr(*serverAddr)
+	client.SetVerbose(*verbose)
+	nat, host, err := client.Discover()
 	if err != nil {
-		fmt.Println(err)
+		log.Fatalln(err)
 	}
 
 	fmt.Println("NAT Type:", nat)
-
 	if host != nil {
 		fmt.Println("External IP Family:", host.Family())
 		fmt.Println("External IP:", host.IP())
