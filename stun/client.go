@@ -72,16 +72,6 @@ func (c *Client) SetSoftwareName(name string) {
 	c.softwareName = name
 }
 
-// Reset cleans the network connections in the client. If error occurs when
-// calling Discover, users can call Reset then retry Discover.
-func (c *Client) Reset() {
-	c.serverUDPAddr = nil
-	if c.conn != nil {
-		c.conn.Close()
-		c.conn = nil
-	}
-}
-
 // Discover contacts the STUN server and gets the response of NAT type, host
 // for UDP punching.
 func (c *Client) Discover() (NATType, *Host, error) {
@@ -98,12 +88,15 @@ func (c *Client) Discover() (NATType, *Host, error) {
 		}
 		c.serverUDPAddr = addr
 	}
-	if c.conn == nil {
-		conn, err := net.ListenUDP("udp", nil)
-		if err != nil {
-			return NAT_ERROR, nil, err
-		}
-		c.conn = conn
+	// Use the connection passed to the client.
+	if c.conn != nil {
+		return discover(c.conn, c.serverUDPAddr, c.softwareName)
 	}
-	return discover(c.conn, c.serverUDPAddr, c.softwareName)
+	// Otherwise create a connection and close it at the end.
+	conn, err := net.ListenUDP("udp", nil)
+	if err != nil {
+		return NAT_ERROR, nil, err
+	}
+	defer conn.Close()
+	return discover(conn, c.serverUDPAddr, c.softwareName)
 }
