@@ -37,8 +37,8 @@ verbose mode.
 > ./go-stun --help
 Usage of ./go-stun:
   -s string
-	server address (default "stun1.l.google.com:19302")
-  -v	verbose mode
+        server address (default "stun1.l.google.com:19302")
+  -v    verbose mode
 ```
 
 ### Use the Library
