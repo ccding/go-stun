@@ -21,5 +21,5 @@
 //
 // 	nat, host, err := stun.NewClient().Discover()
 //
-// More details please go to `example.go`.
+// More details please go to `main.go`.
 package stun

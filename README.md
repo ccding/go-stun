@@ -12,7 +12,39 @@ go-stun
 
 go-stun is a STUN (RFC 3489, 5389) client implementation in golang.
 
-It is extremely easy to use -- just one line of code.
+### Use the Command Line Tool
+
+Simply run these commands (if you have installed golang and set `$GOPATH`)
+```
+go get github.com/ccding/go-stun
+go-stun
+```
+or clone this repo and run these commands
+```
+go build
+./go-stun
+```
+You will get the output like
+```
+NAT Type: Full cone NAT
+External IP Family: 1
+External IP: 166.111.4.100
+External Port: 23009
+```
+Use can use `-s` flag to use another STUN server, and use `-v` to work on
+verbose mode.
+```bash
+> ./go-stun --help
+Usage of ./go-stun:
+  -s string
+	server address (default "stun1.l.google.com:19302")
+  -v	verbose mode
+```
+
+### Use the Library
+
+The library `github.com/ccding/go-stun/stun` is extremely easy to use -- just
+one line of code.
 
 ```go
 import "github.com/ccding/go-stun/stun"
