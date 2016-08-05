@@ -29,14 +29,14 @@ func (l *StunLogger) Debug(v ...interface{}) {
 	}
 }
 
-// Debug outputs the log in the format of log.Printf.
+// Debugf outputs the log in the format of log.Printf.
 func (l *StunLogger) Debugf(format string, v ...interface{}) {
 	if l.debug {
 		l.Printf(format, v...)
 	}
 }
 
-// Debug outputs the log in the format of log.Println.
+// Debugln outputs the log in the format of log.Println.
 func (l *StunLogger) Debugln(v ...interface{}) {
 	if l.debug {
 		l.Println(v...)
