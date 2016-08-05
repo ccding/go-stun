@@ -21,7 +21,7 @@ import (
 	"strconv"
 )
 
-// The network address as a host.
+// Host defines the network address including address family, IP address and port.
 type Host struct {
 	family uint16
 	ip     string
