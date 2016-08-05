@@ -22,5 +22,5 @@ func main() {
 }
 ```
 
-More details please go to `example.go` and [GoDoc]
+More details please go to `main.go` and [GoDoc]
 (http://godoc.org/github.com/ccding/go-stun/stun)

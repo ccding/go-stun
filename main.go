@@ -29,9 +29,16 @@ func main() {
 	var verbose = flag.Bool("v", false, "verbose mode")
 	flag.Parse()
 
+	// Creates a STUN client. NewClientWithConnection can also be used if
+	// you want to handle the UDP listener by yourself.
 	client := stun.NewClient()
+	// The default addr (stun.DefaultServerAddr) will be used unless we
+	// call SetServerAddr.
 	client.SetServerAddr(*serverAddr)
+	// Non verbose mode will be used by default unless we call
+	// SetVerbose(true).
 	client.SetVerbose(*verbose)
+	// Discover the NAT and return the result.
 	nat, host, err := client.Discover()
 	if err != nil {
 		log.Fatalln(err)
