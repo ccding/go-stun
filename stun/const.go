@@ -18,8 +18,7 @@ package stun
 
 // Default server address and client name.
 const (
-	DefaultServerHost   = "stun1.l.google.com"
-	DefaultServerPort   = 19302
+	DefaultServerAddr   = "stun1.l.google.com:19302"
 	DefaultSoftwareName = "StunClient"
 )
 

@@ -17,7 +17,6 @@
 package stun
 
 import (
-	"errors"
 	"net"
 	"strconv"
 )
@@ -48,16 +47,8 @@ func NewClientWithConnection(conn net.PacketConn) *Client {
 }
 
 // SetServerHost allows user to set the STUN hostname and port.
-func (c *Client) SetServerHost(host string, port int) error {
-	ips, err := net.LookupHost(host)
-	if err != nil {
-		return err
-	}
-	if len(ips) == 0 {
-		return errors.New("Failed to get IP address of " + host + ".")
-	}
-	c.serverAddr = net.JoinHostPort(ips[0], strconv.Itoa(port))
-	return nil
+func (c *Client) SetServerHost(host string, port int) {
+	c.serverAddr = net.JoinHostPort(host, strconv.Itoa(port))
 }
 
 // SetServerAddr allows user to set the transport layer STUN server address.
@@ -75,10 +66,7 @@ func (c *Client) SetSoftwareName(name string) {
 // for UDP punching.
 func (c *Client) Discover() (NATType, *Host, error) {
 	if c.serverAddr == "" {
-		err := c.SetServerHost(DefaultServerHost, DefaultServerPort)
-		if err != nil {
-			return NAT_ERROR, nil, err
-		}
+		c.SetServerAddr(DefaultServerAddr)
 	}
 	serverUDPAddr, err := net.ResolveUDPAddr("udp", c.serverAddr)
 	if err != nil {
