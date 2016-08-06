@@ -102,7 +102,7 @@ func (v *packet) mappedAddr() *Host {
 	return nil
 }
 
-func (v *packet) changedAddr() *Host {
+func (v *packet) changeAddr() *Host {
 	for _, a := range v.attributes {
 		if a.types == attribute_CHANGED_ADDRESS {
 			return a.address()
