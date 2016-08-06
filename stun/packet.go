@@ -36,14 +36,15 @@ func SetDebug(d bool) {
 type packet struct {
 	types      uint16
 	length     uint16
-	id         []byte // 16 bytes
+	id         []byte // 4 bytes magic cookie + 12 bytes transaction id
 	attributes []attribute
 }
 
 func newPacket() (*packet, error) {
 	v := new(packet)
 	v.id = make([]byte, 16)
-	_, err := rand.Read(v.id)
+	binary.BigEndian.PutUint32(v.id[:4], magicCookie)
+	_, err := rand.Read(v.id[4:])
 	if err != nil {
 		return nil, err
 	}
