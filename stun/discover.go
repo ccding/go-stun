@@ -91,7 +91,7 @@ func test1(conn net.PacketConn, addr net.Addr, softwareName string) (net.Addr, *
 		return nil, nil, nil, false, nil, err
 	}
 	if packet == nil {
-		return nil, nil, nil, false, nil, nil
+		return raddr, nil, nil, false, nil, nil
 	}
 	// RFC 3489 doesn't require the server return XOR mapped address.
 	hostMappedAddr := packet.xorMappedAddr()
@@ -175,12 +175,12 @@ func discover(conn net.PacketConn, addr net.Addr, softwareName string, logger *L
 	if err != nil {
 		return NAT_ERROR, nil, err
 	}
-	exHostIP := host.IP()
 	logger.Debugln("Received from:", raddr)
 	logger.Debugln("Received: isNil:", packet == nil)
 	if packet == nil {
 		return NAT_BLOCKED, nil, nil
 	}
+	exHostIP := host.IP()
 	logger.Debugln("Received: extAddr:", host.TransportAddr())
 	logger.Debugln("Received: changeAddr:", changeAddr)
 	logger.Debugln("Received: identical:", identical)

@@ -58,12 +58,10 @@ func newChangeReqAttribute(packet *packet, changeIP bool, changePort bool) *attr
 	return newAttribute(attribute_CHANGE_REQUEST, value)
 }
 
-func (v *attribute) xorMappedAddr() *Host {
-	cookie := make([]byte, 4)
-	binary.BigEndian.PutUint32(cookie, magicCookie)
+func (v *attribute) xorMappedAddr(id []byte) *Host {
 	xorIP := make([]byte, 16)
 	for i := 0; i < len(v.value)-4; i++ {
-		xorIP[i] = v.value[i+4] ^ cookie[i]
+		xorIP[i] = v.value[i+4] ^ id[i]
 	}
 	family := binary.BigEndian.Uint16(v.value[0:2])
 	port := binary.BigEndian.Uint16(v.value[2:4])
@@ -72,7 +70,8 @@ func (v *attribute) xorMappedAddr() *Host {
 	if family == attribute_FAMILY_IPV4 {
 		xorIP = xorIP[:4]
 	}
-	return &Host{family, net.IP(xorIP).String(), port ^ (magicCookie >> 16)}
+	value, _ := binary.Uvarint(id[:2])
+	return &Host{family, net.IP(xorIP).String(), port ^ uint16(value)}
 }
 
 func (v *attribute) address() *Host {

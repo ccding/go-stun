@@ -27,20 +27,18 @@ import (
 type packet struct {
 	types      uint16
 	length     uint16
-	cookie     uint32
-	id         []byte // 12 bytes
+	id         []byte // 16 bytes
 	attributes []attribute
 }
 
 func newPacket() (*packet, error) {
 	v := new(packet)
-	v.id = make([]byte, 12)
+	v.id = make([]byte, 16)
 	_, err := rand.Read(v.id)
 	if err != nil {
 		return nil, err
 	}
 	v.attributes = make([]attribute, 0, 10)
-	v.cookie = magicCookie
 	v.length = 0
 	return v, nil
 }
@@ -55,8 +53,7 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 	}
 	packet.types = binary.BigEndian.Uint16(packetBytes[0:2])
 	packet.length = binary.BigEndian.Uint16(packetBytes[2:4])
-	packet.cookie = binary.BigEndian.Uint32(packetBytes[4:8])
-	packet.id = packetBytes[8:20]
+	packet.id = packetBytes[4:20]
 	for pos := uint16(20); pos < uint16(len(packetBytes)); {
 		types := binary.BigEndian.Uint16(packetBytes[pos : pos+2])
 		length := binary.BigEndian.Uint16(packetBytes[pos+2 : pos+4])
@@ -77,10 +74,9 @@ func (v *packet) addAttribute(a attribute) {
 }
 
 func (v *packet) bytes() []byte {
-	packetBytes := make([]byte, 8)
+	packetBytes := make([]byte, 4)
 	binary.BigEndian.PutUint16(packetBytes[0:2], v.types)
 	binary.BigEndian.PutUint16(packetBytes[2:4], v.length)
-	binary.BigEndian.PutUint32(packetBytes[4:8], v.cookie)
 	packetBytes = append(packetBytes, v.id...)
 	for _, a := range v.attributes {
 		buf := make([]byte, 2)
@@ -123,7 +119,7 @@ func (v *packet) changeAddr() *Host {
 func (v *packet) xorMappedAddr() *Host {
 	for _, a := range v.attributes {
 		if (a.types == attribute_XOR_MAPPED_ADDRESS) || (a.types == attribute_XOR_MAPPED_ADDRESS_EXP) {
-			return a.xorMappedAddr()
+			return a.xorMappedAddr(v.id)
 		}
 	}
 	return nil
