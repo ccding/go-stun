@@ -39,14 +39,12 @@ func isLocalAddress(local, localRemote string) bool {
 	if err != nil {
 		return false
 	}
-
 	// Try comparing with the local address on the socket first, but only if
 	// it's actually specified.
 	addr, err := net.ResolveUDPAddr("udp", local)
 	if err == nil && addr.IP != nil && !addr.IP.IsUnspecified() {
 		return addr.IP.Equal(localRemoteAddr.IP)
 	}
-
 	// Fallback to checking IPs of all interfaces
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
@@ -64,25 +62,6 @@ func isLocalAddress(local, localRemote string) bool {
 	return false
 }
 
-func sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string) (net.Addr, *packet, error) {
-	// Construct packet.
-	packet, err := newPacket()
-	if err != nil {
-		return nil, nil, err
-	}
-	packet.types = type_BINDING_REQUEST
-	attribute := newSoftwareAttribute(packet, softwareName)
-	packet.addAttribute(*attribute)
-	attribute = newFingerprintAttribute(packet)
-	packet.addAttribute(*attribute)
-	// Send packet.
-	raddr, packet, err := packet.send(conn, addr)
-	if err != nil {
-		return raddr, nil, err
-	}
-	return raddr, packet, nil
-}
-
 func sendChangeReq(conn net.PacketConn, addr net.Addr, softwareName string, changeIP bool, changePort bool) (net.Addr, *packet, error) {
 	// Construct packet.
 	packet, err := newPacket()
@@ -92,8 +71,10 @@ func sendChangeReq(conn net.PacketConn, addr net.Addr, softwareName string, chan
 	packet.types = type_BINDING_REQUEST
 	attribute := newSoftwareAttribute(packet, softwareName)
 	packet.addAttribute(*attribute)
-	attribute = newChangeReqAttribute(packet, changeIP, changePort)
-	packet.addAttribute(*attribute)
+	if changeIP || changePort {
+		attribute = newChangeReqAttribute(packet, changeIP, changePort)
+		packet.addAttribute(*attribute)
+	}
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
 	// Send packet.
@@ -105,14 +86,13 @@ func sendChangeReq(conn net.PacketConn, addr net.Addr, softwareName string, chan
 }
 
 func test1(conn net.PacketConn, addr net.Addr, softwareName string) (net.Addr, *packet, net.Addr, bool, *Host, error) {
-	raddr, packet, err := sendBindingReq(conn, addr, softwareName)
+	raddr, packet, err := sendChangeReq(conn, addr, softwareName, false, false)
 	if err != nil {
 		return nil, nil, nil, false, nil, err
 	}
 	if packet == nil {
 		return nil, nil, nil, false, nil, nil
 	}
-
 	// RFC 3489 doesn't require the server return XOR mapped address.
 	hostMappedAddr := packet.xorMappedAddr()
 	if hostMappedAddr == nil {

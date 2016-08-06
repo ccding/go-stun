@@ -93,6 +93,15 @@ func (v *packet) bytes() []byte {
 	return packetBytes
 }
 
+func (v *packet) sourceAddr() *Host {
+	for _, a := range v.attributes {
+		if a.types == attribute_SOURCE_ADDRESS {
+			return a.address()
+		}
+	}
+	return nil
+}
+
 func (v *packet) mappedAddr() *Host {
 	for _, a := range v.attributes {
 		if a.types == attribute_MAPPED_ADDRESS {
