@@ -25,8 +25,9 @@ import (
 )
 
 func main() {
-	var serverAddr = flag.String("s", stun.DefaultServerAddr, "server address")
+	var serverAddr = flag.String("s", stun.DefaultServerAddr, "STUN server address")
 	var verbose = flag.Bool("v", false, "verbose mode")
+	var debug = flag.Bool("d", false, "debug mode")
 	flag.Parse()
 
 	// Creates a STUN client. NewClientWithConnection can also be used if
@@ -38,6 +39,8 @@ func main() {
 	// Non verbose mode will be used by default unless we call
 	// SetVerbose(true).
 	client.SetVerbose(*verbose)
+	// Sets the global debug mode of the library.
+	stun.SetDebug(*debug)
 	// Discover the NAT and return the result.
 	nat, host, err := client.Discover()
 	if err != nil {

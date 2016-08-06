@@ -19,10 +19,19 @@ package stun
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 )
+
+var debug = false
+
+// SetDebug sets the library to debug mode, which prints all the network traffic.
+func SetDebug(d bool) {
+	debug = d
+}
 
 type packet struct {
 	types      uint16
@@ -130,6 +139,9 @@ func (v *packet) xorMappedAddr() *Host {
 // Retransmissions continue with intervals of 1.6s until a response is
 // received, or a total of 9 requests have been sent.
 func (v *packet) send(conn net.PacketConn, addr net.Addr) (net.Addr, *packet, error) {
+	if debug {
+		fmt.Print(hex.Dump(v.bytes()))
+	}
 	timeout := 100
 	for i := 0; i < 9; i++ {
 		length, err := conn.WriteTo(v.bytes(), addr)
@@ -150,6 +162,9 @@ func (v *packet) send(conn net.PacketConn, addr net.Addr) (net.Addr, *packet, er
 		length, raddr, err := conn.ReadFrom(packetBytes)
 		if err == nil {
 			pkt, err := newPacketFromBytes(packetBytes[0:length])
+			if debug {
+				fmt.Print(hex.Dump(pkt.bytes()))
+			}
 			return raddr, pkt, err
 		}
 		if !err.(net.Error).Timeout() {
