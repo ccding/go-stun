@@ -64,11 +64,11 @@ func isLocalAddress(local, localRemote string) bool {
 	return false
 }
 
-func sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, error) {
+func sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string) (net.Addr, *packet, error) {
 	// Construct packet.
 	packet, err := newPacket()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	packet.types = type_BINDING_REQUEST
 	attribute := newSoftwareAttribute(packet, softwareName)
@@ -76,18 +76,18 @@ func sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string) (*p
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
 	// Send packet.
-	packet, err = packet.send(conn, addr)
+	raddr, packet, err := packet.send(conn, addr)
 	if err != nil {
-		return nil, err
+		return raddr, nil, err
 	}
-	return packet, nil
+	return raddr, packet, nil
 }
 
-func sendChangeReq(conn net.PacketConn, addr net.Addr, softwareName string, changeIP bool, changePort bool) (*packet, error) {
+func sendChangeReq(conn net.PacketConn, addr net.Addr, softwareName string, changeIP bool, changePort bool) (net.Addr, *packet, error) {
 	// Construct packet.
 	packet, err := newPacket()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	packet.types = type_BINDING_REQUEST
 	attribute := newSoftwareAttribute(packet, softwareName)
@@ -97,20 +97,20 @@ func sendChangeReq(conn net.PacketConn, addr net.Addr, softwareName string, chan
 	attribute = newFingerprintAttribute(packet)
 	packet.addAttribute(*attribute)
 	// Send packet.
-	packet, err = packet.send(conn, addr)
+	raddr, packet, err := packet.send(conn, addr)
 	if err != nil {
-		return nil, err
+		return raddr, nil, err
 	}
-	return packet, nil
+	return raddr, packet, nil
 }
 
-func test1(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, net.Addr, bool, *Host, error) {
-	packet, err := sendBindingReq(conn, addr, softwareName)
+func test1(conn net.PacketConn, addr net.Addr, softwareName string) (net.Addr, *packet, net.Addr, bool, *Host, error) {
+	raddr, packet, err := sendBindingReq(conn, addr, softwareName)
 	if err != nil {
-		return nil, nil, false, nil, err
+		return nil, nil, nil, false, nil, err
 	}
 	if packet == nil {
-		return nil, nil, false, nil, nil
+		return nil, nil, nil, false, nil, nil
 	}
 
 	// RFC 3489 doesn't require the server return XOR mapped address.
@@ -118,7 +118,7 @@ func test1(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, ne
 	if hostMappedAddr == nil {
 		hostMappedAddr = packet.mappedAddr()
 		if hostMappedAddr == nil {
-			return nil, nil, false, nil, errors.New("No mapped address.")
+			return raddr, nil, nil, false, nil, errors.New("No mapped address.")
 		}
 	}
 
@@ -126,21 +126,21 @@ func test1(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, ne
 
 	hostChangedAddr := packet.changedAddr()
 	if hostChangedAddr == nil {
-		return packet, nil, identical, hostMappedAddr, nil
+		return raddr, packet, nil, identical, hostMappedAddr, nil
 	}
 	changedAddrStr := hostChangedAddr.TransportAddr()
 	changedAddr, err := net.ResolveUDPAddr("udp", changedAddrStr)
 	if err != nil {
-		return nil, nil, false, nil, errors.New("Failed to resolve changed address.")
+		return raddr, nil, nil, false, nil, errors.New("Failed to resolve changed address.")
 	}
-	return packet, changedAddr, identical, hostMappedAddr, nil
+	return raddr, packet, changedAddr, identical, hostMappedAddr, nil
 }
 
-func test2(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, error) {
+func test2(conn net.PacketConn, addr net.Addr, softwareName string) (net.Addr, *packet, error) {
 	return sendChangeReq(conn, addr, softwareName, true, true)
 }
 
-func test3(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, error) {
+func test3(conn net.PacketConn, addr net.Addr, softwareName string) (net.Addr, *packet, error) {
 	return sendChangeReq(conn, addr, softwareName, false, true)
 }
 
@@ -189,27 +189,29 @@ func test3(conn net.PacketConn, addr net.Addr, softwareName string) (*packet, er
 //                                  |       Port
 //                                  +------>Restricted
 func discover(conn net.PacketConn, addr net.Addr, softwareName string, logger *Logger) (NATType, *Host, error) {
-	logger.Debug("Do Test1")
-	logger.Debug("Send To: ", addr)
-	packet, changedAddr, identical, host, err := test1(conn, addr, softwareName)
+	logger.Debugln("Do Test1")
+	logger.Debugln("Send To: ", addr)
+	raddr, packet, changedAddr, identical, host, err := test1(conn, addr, softwareName)
 	if err != nil {
 		return NAT_ERROR, nil, err
 	}
 	exHostIP := host.IP()
-	logger.Debugf("Received: {isNil:%v}", packet == nil)
+	logger.Debugln("Received from: ", raddr)
+	logger.Debugln("Received: isNil: ", packet == nil)
 	if packet == nil {
 		return NAT_BLOCKED, nil, nil
 	}
-	logger.Debugf("Received: {host:'%v'}", host.TransportAddr())
-	logger.Debugf("Received: {changedAddr:'%v'}", changedAddr)
-	logger.Debugf("Received: {identical:'%v'}", identical)
-	logger.Debug("Do Test2")
-	logger.Debug("Send To: ", addr)
-	packet, err = test2(conn, addr, softwareName)
+	logger.Debugln("Received: extAddr: ", host.TransportAddr())
+	logger.Debugln("Received: changedAddr: ", changedAddr)
+	logger.Debugln("Received: identical: ", identical)
+	logger.Debugln("Do Test2")
+	logger.Debugln("Send To: ", addr)
+	raddr, packet, err = test2(conn, addr, softwareName)
 	if err != nil {
 		return NAT_ERROR, host, err
 	}
-	logger.Debugf("Received: {isNil:'%v'}", packet == nil)
+	logger.Debugln("Received from: ", raddr)
+	logger.Debugln("Received: isNil: ", packet == nil)
 	if identical {
 		if packet == nil {
 			return NAT_SYMETRIC_UDP_FIREWALL, host, nil
@@ -222,28 +224,29 @@ func discover(conn net.PacketConn, addr net.Addr, softwareName string, logger *L
 	if changedAddr == nil {
 		return NAT_ERROR, host, errors.New("No changed address.")
 	}
-	logger.Debug("Do Test1")
-	logger.Debug("Send To: ", changedAddr)
-	packet, _, _, host, err = test1(conn, changedAddr, softwareName)
+	logger.Debugln("Do Test1")
+	logger.Debugln("Send To: ", changedAddr)
+	raddr, packet, _, _, host, err = test1(conn, changedAddr, softwareName)
 	if err != nil {
 		return NAT_ERROR, host, err
 	}
-	logger.Debugf("Received: {isNil:'%v'}", packet == nil)
-	logger.Debugf("Received: {host:'%v'}", host.TransportAddr())
+	logger.Debugln("Received from: ", raddr)
+	logger.Debugln("Received: isNil: ", packet == nil)
 	if packet == nil {
 		// It should be NAT_BLOCKED, but will be detected in the first
 		// step. So this will never happen.
 		return NAT_UNKNOWN, host, nil
 	}
-	logger.Debugf("Received: {identical:'%v'}", identical)
+	logger.Debugln("Received: extAddr: ", host.TransportAddr())
 	if exHostIP == host.IP() {
-		logger.Debug("Do Test3")
-		logger.Debug("Send To: ", addr)
-		packet, err = test3(conn, addr, softwareName)
+		logger.Debugln("Do Test3")
+		logger.Debugln("Send To: ", addr)
+		raddr, packet, err = test3(conn, addr, softwareName)
 		if err != nil {
 			return NAT_ERROR, host, err
 		}
-		logger.Debugf("Received: {isNil:'%v'}", packet == nil)
+		logger.Debugln("Received from: ", raddr)
+		logger.Debugln("Received: isNil: ", packet == nil)
 		if packet == nil {
 			return NAT_PORT_RESTRICTED, host, nil
 		}
