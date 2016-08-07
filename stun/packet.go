@@ -17,6 +17,7 @@
 package stun
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
@@ -159,17 +160,23 @@ func (v *packet) send(conn net.PacketConn, addr net.Addr) (net.Addr, *packet, er
 		if timeout < 1600 {
 			timeout *= 2
 		}
-		packetBytes := make([]byte, 1024)
-		length, raddr, err := conn.ReadFrom(packetBytes)
-		if err == nil {
+		for {
+			packetBytes := make([]byte, 1024)
+			length, raddr, err := conn.ReadFrom(packetBytes)
+			if err != nil {
+				if err.(net.Error).Timeout() {
+					break
+				}
+				return nil, nil, err
+			}
 			pkt, err := newPacketFromBytes(packetBytes[0:length])
+			if !bytes.Equal(v.id, pkt.id) {
+				continue
+			}
 			if debug {
 				fmt.Print(hex.Dump(pkt.bytes()))
 			}
 			return raddr, pkt, err
-		}
-		if !err.(net.Error).Timeout() {
-			return nil, nil, err
 		}
 	}
 	return nil, nil, nil
