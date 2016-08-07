@@ -17,6 +17,7 @@
 package stun
 
 import (
+	"errors"
 	"net"
 	"strconv"
 )
@@ -92,4 +93,28 @@ func (c *Client) Discover() (NATType, *Host, error) {
 		defer conn.Close()
 	}
 	return discover(conn, serverUDPAddr, c.softwareName, c.logger)
+}
+
+// Keepalive sends and receives a bind request, which ensures the mapping stays open
+// Only applicable when client was created with a connection.
+func (c *Client) Keepalive() (*Host, error) {
+	if c.conn == nil {
+		return nil, errors.New("no connection available")
+	}
+	if c.serverAddr == "" {
+		c.SetServerAddr(DefaultServerAddr)
+	}
+	serverUDPAddr, err := net.ResolveUDPAddr("udp", c.serverAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	_, packet, _, _, host, err := test1(c.conn, serverUDPAddr, c.softwareName)
+	if err != nil {
+		return nil, err
+	}
+	if packet == nil {
+		return nil, errors.New("failed to contact")
+	}
+	return host, nil
 }
