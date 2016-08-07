@@ -101,7 +101,7 @@ func (v *packet) bytes() []byte {
 
 func (v *packet) sourceAddr() *Host {
 	for _, a := range v.attributes {
-		if a.types == attribute_SOURCE_ADDRESS {
+		if a.types == attributeSourceAddress {
 			return a.address()
 		}
 	}
@@ -110,7 +110,7 @@ func (v *packet) sourceAddr() *Host {
 
 func (v *packet) mappedAddr() *Host {
 	for _, a := range v.attributes {
-		if a.types == attribute_MAPPED_ADDRESS {
+		if a.types == attributeMappedAddress {
 			return a.address()
 		}
 	}
@@ -119,7 +119,7 @@ func (v *packet) mappedAddr() *Host {
 
 func (v *packet) changeAddr() *Host {
 	for _, a := range v.attributes {
-		if a.types == attribute_CHANGED_ADDRESS {
+		if a.types == attributeChangedAddress {
 			return a.address()
 		}
 	}
@@ -128,7 +128,7 @@ func (v *packet) changeAddr() *Host {
 
 func (v *packet) xorMappedAddr() *Host {
 	for _, a := range v.attributes {
-		if (a.types == attribute_XOR_MAPPED_ADDRESS) || (a.types == attribute_XOR_MAPPED_ADDRESS_EXP) {
+		if (a.types == attributeXorMappedAddress) || (a.types == attributeXorMappedAddressExp) {
 			return a.xorMappedAddr(v.id)
 		}
 	}

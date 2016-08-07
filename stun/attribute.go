@@ -40,11 +40,11 @@ func newFingerprintAttribute(packet *packet) *attribute {
 	crc := crc32.ChecksumIEEE(packet.bytes()) ^ fingerprint
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, crc)
-	return newAttribute(attribute_FINGERPRINT, buf)
+	return newAttribute(attributeFingerprint, buf)
 }
 
 func newSoftwareAttribute(packet *packet, name string) *attribute {
-	return newAttribute(attribute_SOFTWARE, []byte(name))
+	return newAttribute(attributeSoftware, []byte(name))
 }
 
 func newChangeReqAttribute(packet *packet, changeIP bool, changePort bool) *attribute {
@@ -55,7 +55,7 @@ func newChangeReqAttribute(packet *packet, changeIP bool, changePort bool) *attr
 	if changePort {
 		value[3] |= 0x02
 	}
-	return newAttribute(attribute_CHANGE_REQUEST, value)
+	return newAttribute(attributeChangeRequest, value)
 }
 
 func (v *attribute) xorMappedAddr(id []byte) *Host {
@@ -67,7 +67,7 @@ func (v *attribute) xorMappedAddr(id []byte) *Host {
 	port := binary.BigEndian.Uint16(v.value[2:4])
 
 	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
-	if family == attribute_FAMILY_IPV4 {
+	if family == attributeFamilyIPv4 {
 		xorIP = xorIP[:4]
 	}
 	value, _ := binary.Uvarint(id[:2])
@@ -80,7 +80,7 @@ func (v *attribute) address() *Host {
 	host.port = binary.BigEndian.Uint16(v.value[2:4])
 
 	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
-	if host.family == attribute_FAMILY_IPV4 {
+	if host.family == attributeFamilyIPv4 {
 		v.value = v.value[:8]
 	}
 	host.ip = net.IP(v.value[4:]).String()
