@@ -19,6 +19,7 @@ package stun
 import (
 	"errors"
 	"net"
+	"strconv"
 )
 
 // Padding the length of the byte slice to multiple of 4.
@@ -219,9 +220,24 @@ func discover(conn net.PacketConn, addr net.Addr, softwareName string, logger *L
 	}
 	logger.Debugln("Received: extAddr:", host.TransportAddr())
 	if exHostIP == host.IP() {
+		tmpAddr, err := net.ResolveUDPAddr("udp", changeAddr.String())
+		if err != nil {
+			return NAT_ERROR, host, err
+		}
+		ip := tmpAddr.IP
+		tmpAddr, err = net.ResolveUDPAddr("udp", addr.String())
+		if err != nil {
+			return NAT_ERROR, host, err
+		}
+		port := tmpAddr.Port
+		changePortAddrStr := net.JoinHostPort(ip.String(), strconv.Itoa(port))
+		changePortAddr, err := net.ResolveUDPAddr("udp", changePortAddrStr)
+		if err != nil {
+			return NAT_ERROR, host, err
+		}
 		logger.Debugln("Do Test3")
 		logger.Debugln("Send To:", addr)
-		raddr, packet, err = test3(conn, addr, softwareName)
+		raddr, packet, err = test3(conn, changePortAddr, softwareName)
 		if err != nil {
 			return NAT_ERROR, host, err
 		}
