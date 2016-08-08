@@ -37,11 +37,8 @@ func main() {
 	// call SetServerAddr.
 	client.SetServerAddr(*serverAddr)
 	// Non verbose mode will be used by default unless we call
-	// SetVerbose(true).
-	if *vv {
-		*v = true
-	}
-	client.SetVerbose(*v)
+	// SetVerbose(true) or SetVVerbose(true).
+	client.SetVerbose(*v || *vv)
 	client.SetVVerbose(*vv)
 	// Discover the NAT and return the result.
 	nat, host, err := client.Discover()
