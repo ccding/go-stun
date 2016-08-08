@@ -34,7 +34,7 @@ func newHostFromStr(s string) *Host {
 		return nil
 	}
 	host := new(Host)
-	if udpAddr.IP.To4 != nil {
+	if udpAddr.IP.To4() != nil {
 		host.family = attributeFamilyIPv4
 	} else {
 		host.family = attributeFamilyIPV6
