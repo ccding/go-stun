@@ -29,10 +29,6 @@ type response struct {
 	identical   bool    // if mappedAddr is in local addr list
 }
 
-func newNilResponse() *response {
-	return &response{nil, nil, nil, nil, false}
-}
-
 func newResponse(pkt *packet, conn net.PacketConn) *response {
 	resp := &response{pkt, nil, nil, nil, false}
 	if pkt == nil {
@@ -59,6 +55,9 @@ func newResponse(pkt *packet, conn net.PacketConn) *response {
 }
 
 func (r *response) String() string {
+	if r == nil {
+		return "Nil"
+	}
 	return fmt.Sprintf("{packet nil: %v, local: %v, remote: %v, changed: %v, identical: %v}",
 		r.packet == nil,
 		r.mappedAddr,

@@ -33,8 +33,7 @@ func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName
 	// Construct packet.
 	pkt, err := newPacket()
 	if err != nil {
-		resp := newNilResponse()
-		return resp, err
+		return nil, err
 	}
 	pkt.types = typeBindingRequest
 	attribute := newSoftwareAttribute(softwareName)
@@ -59,14 +58,14 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 	for i := 0; i < numRetransmit; i++ {
 		length, err := conn.WriteTo(pkt.bytes(), addr)
 		if err != nil {
-			return newNilResponse(), err
+			return nil, err
 		}
 		if length != len(pkt.bytes()) {
-			return newNilResponse(), errors.New("Error in sending data.")
+			return nil, errors.New("Error in sending data.")
 		}
 		err = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Millisecond))
 		if err != nil {
-			return newNilResponse(), err
+			return nil, err
 		}
 		if timeout < 1600 {
 			timeout *= 2
@@ -78,7 +77,7 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 				if err.(net.Error).Timeout() {
 					break
 				}
-				return newNilResponse(), err
+				return nil, err
 			}
 			p, err := newPacketFromBytes(packetBytes[0:length])
 			if !bytes.Equal(pkt.transID, p.transID) {
@@ -91,5 +90,5 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 			return resp, err
 		}
 	}
-	return newNilResponse(), nil
+	return nil, nil
 }
