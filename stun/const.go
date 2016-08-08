@@ -32,37 +32,36 @@ type NATType int
 
 // NAT types.
 const (
-	NAT_ERROR NATType = iota
-	NAT_UNKNOWN
-	NAT_NONE
-	NAT_BLOCKED
-	NAT_FULL
-	NAT_SYMETRIC
-	NAT_RESTRICTED
-	NAT_PORT_RESTRICTED
-	NAT_SYMETRIC_UDP_FIREWALL
+	NATError NATType = iota
+	NATUnknown
+	NATNone
+	NATBlocked
+	NATFull
+	NATSymetric
+	NATRestricted
+	NATPortRestricted
+	NATSymetricUDPFirewall
 )
 
+var NATStr map[NATType]string
+
+func init() {
+	NATStr = map[NATType]string{
+		NATError:               "Test failed",
+		NATUnknown:             "Unexpected response from the STUN server",
+		NATBlocked:             "UDP is blocked",
+		NATFull:                "Full cone NAT",
+		NATSymetric:            "Symetric NAT",
+		NATRestricted:          "Restricted NAT",
+		NATPortRestricted:      "Port restricted NAT",
+		NATNone:                "Not behind a NAT",
+		NATSymetricUDPFirewall: "Symetric UDP firewall",
+	}
+}
+
 func (nat NATType) String() string {
-	switch nat {
-	case NAT_ERROR:
-		return "Test failed"
-	case NAT_UNKNOWN:
-		return "Unexpected response from the STUN server"
-	case NAT_BLOCKED:
-		return "UDP is blocked"
-	case NAT_FULL:
-		return "Full cone NAT"
-	case NAT_SYMETRIC:
-		return "Symetric NAT"
-	case NAT_RESTRICTED:
-		return "Restricted NAT"
-	case NAT_PORT_RESTRICTED:
-		return "Port restricted NAT"
-	case NAT_NONE:
-		return "Not behind a NAT"
-	case NAT_SYMETRIC_UDP_FIREWALL:
-		return "Symetric UDP firewall"
+	if s, ok := NATStr[nat]; ok {
+		return s
 	}
 	return "Unknown"
 }
@@ -139,37 +138,37 @@ const (
 )
 
 const (
-	type_BINDING_REQUEST                   = 0x0001
-	type_BINDING_RESPONSE                  = 0x0101
-	type_BINDING_ERROR_RESPONSE            = 0x0111
-	type_SHARED_SECRET_REQUEST             = 0x0002
-	type_SHARED_SECRET_RESPONSE            = 0x0102
-	type_SHARED_ERROR_RESPONSE             = 0x0112
-	type_ALLOCATE                          = 0x0003
-	type_ALLOCATE_RESPONSE                 = 0x0103
-	type_ALLOCATE_ERROR_RESPONSE           = 0x0113
-	type_REFRESH                           = 0x0004
-	type_REFRESH_RESPONSE                  = 0x0104
-	type_REFRESH_ERROR_RESPONSE            = 0x0114
-	type_SEND                              = 0x0006
-	type_SEND_RESPONSE                     = 0x0106
-	type_SEND_ERROR_RESPONSE               = 0x0116
-	type_DATA                              = 0x0007
-	type_DATA_RESPONSE                     = 0x0107
-	type_DATA_ERROR_RESPONSE               = 0x0117
-	type_CREATE_PERMISIION                 = 0x0008
-	type_CREATE_PERMISIION_RESPONSE        = 0x0108
-	type_CREATE_PERMISIION_ERROR_RESPONSE  = 0x0118
-	type_CHANNEL_BINDING                   = 0x0009
-	type_CHANNEL_BINDING_RESPONSE          = 0x0109
-	type_CHANNEL_BINDING_ERROR_RESPONSE    = 0x0119
-	type_CONNECT                           = 0x000A
-	type_CONNECT_RESPONSE                  = 0x010A
-	type_CONNECT_ERROR_RESPONSE            = 0x011A
-	type_CONNECTION_BIND                   = 0x000B
-	type_CONNECTION_BIND_RESPONSE          = 0x010B
-	type_CONNECTION_BIND_ERROR_RESPONSE    = 0x011B
-	type_CONNECTION_ATTEMPT                = 0x000C
-	type_CONNECTION_ATTEMPT_RESPONSE       = 0x010C
-	type_CONNECTION_ATTEMPT_ERROR_RESPONSE = 0x011C
+	typeBindingRequest                 = 0x0001
+	typeBindingResponse                = 0x0101
+	typeBindingErrorResponse           = 0x0111
+	typeSharedSecretRequest            = 0x0002
+	typeSharedSecretResponse           = 0x0102
+	typeSharedErrorResponse            = 0x0112
+	typeAllocate                       = 0x0003
+	typeAllocateResponse               = 0x0103
+	typeAllocateErrorResponse          = 0x0113
+	typeRefresh                        = 0x0004
+	typeRefreshResponse                = 0x0104
+	typeRefreshErrorResponse           = 0x0114
+	typeSend                           = 0x0006
+	typeSendResponse                   = 0x0106
+	typeSendErrorResponse              = 0x0116
+	typeData                           = 0x0007
+	typeDataResponse                   = 0x0107
+	typeDataErrorResponse              = 0x0117
+	typeCreatePermisiion               = 0x0008
+	typeCreatePermisiionResponse       = 0x0108
+	typeCreatePermisiionErrorResponse  = 0x0118
+	typeChannelBinding                 = 0x0009
+	typeChannelBindingResponse         = 0x0109
+	typeChannelBindingErrorResponse    = 0x0119
+	typeConnect                        = 0x000a
+	typeConnectResponse                = 0x010a
+	typeConnectErrorResponse           = 0x011a
+	typeConnectionBind                 = 0x000b
+	typeConnectionBindResponse         = 0x010b
+	typeConnectionBindErrorResponse    = 0x011b
+	typeConnectionAttempt              = 0x000c
+	typeConnectionAttemptResponse      = 0x010c
+	typeConnectionAttemptErrorResponse = 0x011c
 )

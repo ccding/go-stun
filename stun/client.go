@@ -80,7 +80,7 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	}
 	serverUDPAddr, err := net.ResolveUDPAddr("udp", c.serverAddr)
 	if err != nil {
-		return NAT_ERROR, nil, err
+		return NATError, nil, err
 	}
 	// Use the connection passed to the client if it is not nil, otherwise
 	// create a connection and close it at the end.
@@ -88,11 +88,11 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	if conn == nil {
 		conn, err = net.ListenUDP("udp", nil)
 		if err != nil {
-			return NAT_ERROR, nil, err
+			return NATError, nil, err
 		}
 		defer conn.Close()
 	}
-	return discover(conn, serverUDPAddr, c.softwareName, c.logger)
+	return c.discover(conn, serverUDPAddr, c.softwareName, c.logger)
 }
 
 // Keepalive sends and receives a bind request, which ensures the mapping stays open
@@ -109,7 +109,7 @@ func (c *Client) Keepalive() (*Host, error) {
 		return nil, err
 	}
 
-	_, packet, _, _, host, err := test1(c.conn, serverUDPAddr, c.softwareName)
+	packet, _, _, host, err := c.test1(c.conn, serverUDPAddr, c.softwareName)
 	if err != nil {
 		return nil, err
 	}

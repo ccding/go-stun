@@ -17,14 +17,10 @@
 package stun
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"net"
-	"time"
 )
 
 var debug = false
@@ -37,20 +33,22 @@ func SetDebug(d bool) {
 type packet struct {
 	types      uint16
 	length     uint16
-	transId    []byte // 4 bytes magic cookie + 12 bytes transaction id
+	transID    []byte // 4 bytes magic cookie + 12 bytes transaction id
 	attributes []attribute
+	raddr      net.Addr
 }
 
 func newPacket() (*packet, error) {
 	v := new(packet)
-	v.transId = make([]byte, 16)
-	binary.BigEndian.PutUint32(v.transId[:4], magicCookie)
-	_, err := rand.Read(v.transId[4:])
+	v.transID = make([]byte, 16)
+	binary.BigEndian.PutUint32(v.transID[:4], magicCookie)
+	_, err := rand.Read(v.transID[4:])
 	if err != nil {
 		return nil, err
 	}
 	v.attributes = make([]attribute, 0, 10)
 	v.length = 0
+	v.raddr = nil
 	return v, nil
 }
 
@@ -64,7 +62,7 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 	}
 	packet.types = binary.BigEndian.Uint16(packetBytes[0:2])
 	packet.length = binary.BigEndian.Uint16(packetBytes[2:4])
-	packet.transId = packetBytes[4:20]
+	packet.transID = packetBytes[4:20]
 	for pos := uint16(20); pos < uint16(len(packetBytes)); {
 		types := binary.BigEndian.Uint16(packetBytes[pos : pos+2])
 		length := binary.BigEndian.Uint16(packetBytes[pos+2 : pos+4])
@@ -76,6 +74,7 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 		packet.addAttribute(*attribute)
 		pos += align(length) + 4
 	}
+	packet.raddr = nil
 	return packet, nil
 }
 
@@ -88,7 +87,7 @@ func (v *packet) bytes() []byte {
 	packetBytes := make([]byte, 4)
 	binary.BigEndian.PutUint16(packetBytes[0:2], v.types)
 	binary.BigEndian.PutUint16(packetBytes[2:4], v.length)
-	packetBytes = append(packetBytes, v.transId...)
+	packetBytes = append(packetBytes, v.transID...)
 	for _, a := range v.attributes {
 		buf := make([]byte, 2)
 		binary.BigEndian.PutUint16(buf, a.types)
@@ -100,27 +99,21 @@ func (v *packet) bytes() []byte {
 	return packetBytes
 }
 
-func (v *packet) sourceAddr() *Host {
-	for _, a := range v.attributes {
-		if a.types == attributeSourceAddress {
-			return a.address()
-		}
-	}
-	return nil
+func (v *packet) getSourceAddr() *Host {
+	return v.getAddr(attributeSourceAddress)
 }
 
-func (v *packet) mappedAddr() *Host {
-	for _, a := range v.attributes {
-		if a.types == attributeMappedAddress {
-			return a.address()
-		}
-	}
-	return nil
+func (v *packet) getMappedAddr() *Host {
+	return v.getAddr(attributeMappedAddress)
 }
 
-func (v *packet) changeAddr() *Host {
+func (v *packet) getChangedAddr() *Host {
+	return v.getAddr(attributeChangedAddress)
+}
+
+func (v *packet) getAddr(attribute uint16) *Host {
 	for _, a := range v.attributes {
-		if a.types == attributeChangedAddress {
+		if a.types == attribute {
 			return a.address()
 		}
 	}
@@ -130,54 +123,8 @@ func (v *packet) changeAddr() *Host {
 func (v *packet) xorMappedAddr() *Host {
 	for _, a := range v.attributes {
 		if (a.types == attributeXorMappedAddress) || (a.types == attributeXorMappedAddressExp) {
-			return a.xorMappedAddr(v.transId)
+			return a.xorMappedAddr(v.transID)
 		}
 	}
 	return nil
-}
-
-// RFC 3489: Clients SHOULD retransmit the request starting with an interval
-// of 100ms, doubling every retransmit until the interval reaches 1.6s.
-// Retransmissions continue with intervals of 1.6s until a response is
-// received, or a total of 9 requests have been sent.
-func (v *packet) send(conn net.PacketConn, addr net.Addr) (net.Addr, *packet, error) {
-	if debug {
-		fmt.Print(hex.Dump(v.bytes()))
-	}
-	timeout := 100
-	for i := 0; i < 9; i++ {
-		length, err := conn.WriteTo(v.bytes(), addr)
-		if err != nil {
-			return nil, nil, err
-		}
-		if length != len(v.bytes()) {
-			return nil, nil, errors.New("Error in sending data.")
-		}
-		err = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Millisecond))
-		if err != nil {
-			return nil, nil, err
-		}
-		if timeout < 1600 {
-			timeout *= 2
-		}
-		for {
-			packetBytes := make([]byte, 1024)
-			length, raddr, err := conn.ReadFrom(packetBytes)
-			if err != nil {
-				if err.(net.Error).Timeout() {
-					break
-				}
-				return nil, nil, err
-			}
-			pkt, err := newPacketFromBytes(packetBytes[0:length])
-			if !bytes.Equal(v.transId, pkt.transId) {
-				continue
-			}
-			if debug {
-				fmt.Print(hex.Dump(pkt.bytes()))
-			}
-			return raddr, pkt, err
-		}
-	}
-	return nil, nil, nil
 }
