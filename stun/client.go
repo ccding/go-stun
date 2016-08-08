@@ -109,12 +109,12 @@ func (c *Client) Keepalive() (*Host, error) {
 		return nil, err
 	}
 
-	packet, _, _, host, err := c.test1(c.conn, serverUDPAddr, c.softwareName)
+	resp, err := c.test1(c.conn, serverUDPAddr, c.softwareName)
 	if err != nil {
 		return nil, err
 	}
-	if packet == nil {
+	if resp.packet == nil {
 		return nil, errors.New("failed to contact")
 	}
-	return host, nil
+	return resp.mappedAddr, nil
 }

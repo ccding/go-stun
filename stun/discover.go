@@ -69,83 +69,80 @@ import (
 func (c *Client) discover(conn net.PacketConn, addr net.Addr, softwareName string, logger *Logger) (NATType, *Host, error) {
 	logger.Debugln("Do Test1")
 	logger.Debugln("Send To:", addr)
-	packet, changedAddr, identical, host, err := c.test1(conn, addr, softwareName)
+	resp, err := c.test1(conn, addr, softwareName)
 	if err != nil {
 		return NATError, nil, err
 	}
-	logger.Debugln("Received from:", packet.raddr)
-	logger.Debugln("Received: isNil:", packet == nil)
-	if packet == nil {
+	logger.Debugln("Received from:", resp.serverAddr)
+	logger.Debugln("Received: isNil:", resp.packet == nil)
+	if resp.packet == nil {
 		return NATBlocked, nil, nil
 	}
-	exHostIP := host.IP()
-	logger.Debugln("Received: extAddr:", host.TransportAddr())
-	logger.Debugln("Received: changedAddr:", changedAddr)
-	logger.Debugln("Received: identical:", identical)
+	logger.Debugln("Received: extAddr:", resp.mappedAddr)
+	logger.Debugln("Received: changedAddr:", resp.changedAddr)
+	logger.Debugln("Received: identical:", resp.identical)
+	exHostIP := resp.mappedAddr.IP()
+	changedAddrHost := resp.changedAddr
+	if changedAddrHost == nil {
+		return NATError, resp.mappedAddr, errors.New("No changed address.")
+	}
 	logger.Debugln("Do Test2")
 	logger.Debugln("Send To:", addr)
-	packet, err = c.test2(conn, addr, softwareName)
+	resp, err = c.test2(conn, addr, softwareName)
 	if err != nil {
-		return NATError, host, err
+		return NATError, resp.mappedAddr, err
 	}
-	if packet != nil {
-		logger.Debugln("Received from:", packet.raddr)
+	if resp.packet != nil {
+		logger.Debugln("Received from:", resp.serverAddr)
 	}
-	logger.Debugln("Received: isNil:", packet == nil)
-	if identical {
-		if packet == nil {
-			return NATSymetricUDPFirewall, host, nil
+	logger.Debugln("Received: isNil:", resp.packet == nil)
+	if resp.identical {
+		if resp.packet == nil {
+			return NATSymetricUDPFirewall, resp.mappedAddr, nil
 		}
-		return NATNone, host, nil
+		return NATNone, resp.mappedAddr, nil
 	}
-	if packet != nil {
-		return NATFull, host, nil
-	}
-	if changedAddr == nil {
-		return NATError, host, errors.New("No changed address.")
+	if resp.packet != nil {
+		return NATFull, resp.mappedAddr, nil
 	}
 	logger.Debugln("Do Test1")
-	logger.Debugln("Send To:", changedAddr)
-	packet, _, _, host, err = c.test1(conn, changedAddr, softwareName)
+	logger.Debugln("Send To:", changedAddrHost)
+	changedAddr, err := net.ResolveUDPAddr("udp", changedAddrHost.String())
+	resp, err = c.test1(conn, changedAddr, softwareName)
 	if err != nil {
-		return NATError, host, err
+		return NATError, resp.mappedAddr, err
 	}
-	logger.Debugln("Received from:", packet.raddr)
-	logger.Debugln("Received: isNil:", packet == nil)
-	if packet == nil {
+	logger.Debugln("Received from:", resp.serverAddr)
+	logger.Debugln("Received: isNil:", resp.packet == nil)
+	if resp.packet == nil {
 		// It should be NAT_BLOCKED, but will be detected in the first
 		// step. So this will never happen.
-		return NATUnknown, host, nil
+		return NATUnknown, resp.mappedAddr, nil
 	}
-	logger.Debugln("Received: extAddr:", host.TransportAddr())
-	if exHostIP == host.IP() {
-		tmpAddr, err := net.ResolveUDPAddr("udp", changedAddr.String())
+	logger.Debugln("Received: extAddr:", resp.mappedAddr)
+	if exHostIP == resp.mappedAddr.IP() {
+		tmpAddr, err := net.ResolveUDPAddr("udp", addr.String())
 		if err != nil {
-			return NATError, host, err
-		}
-		ip := tmpAddr.IP
-		tmpAddr, err = net.ResolveUDPAddr("udp", addr.String())
-		if err != nil {
-			return NATError, host, err
+			return NATError, resp.mappedAddr, err
 		}
 		port := tmpAddr.Port
-		changePortAddrStr := net.JoinHostPort(ip.String(), strconv.Itoa(port))
+		changePortAddrStr := net.JoinHostPort(changedAddr.IP.String(), strconv.Itoa(port))
 		changePortAddr, err := net.ResolveUDPAddr("udp", changePortAddrStr)
 		if err != nil {
-			return NATError, host, err
+			return NATError, resp.mappedAddr, err
 		}
 		logger.Debugln("Do Test3")
 		logger.Debugln("Send To:", addr)
-		packet, err = c.test3(conn, changePortAddr, softwareName)
+		resp, err = c.test3(conn, changePortAddr, softwareName)
 		if err != nil {
-			return NATError, host, err
+			return NATError, resp.mappedAddr, err
 		}
-		logger.Debugln("Received from:", packet.raddr)
-		logger.Debugln("Received: isNil:", packet == nil)
-		if packet == nil {
-			return NATPortRestricted, host, nil
+		logger.Debugln("Received from:", resp.mappedAddr)
+		logger.Debugln("Received: isNil:", resp.packet == nil)
+		if resp.packet == nil {
+			return NATPortRestricted, resp.mappedAddr, nil
 		}
-		return NATRestricted, host, nil
+		return NATRestricted, resp.mappedAddr, nil
 	}
-	return NATSymetric, host, nil
+	return NATSymetric, resp.mappedAddr, nil
 }

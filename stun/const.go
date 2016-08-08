@@ -43,10 +43,10 @@ const (
 	NATSymetricUDPFirewall
 )
 
-var NATStr map[NATType]string
+var natStr map[NATType]string
 
 func init() {
-	NATStr = map[NATType]string{
+	natStr = map[NATType]string{
 		NATError:               "Test failed",
 		NATUnknown:             "Unexpected response from the STUN server",
 		NATBlocked:             "UDP is blocked",
@@ -60,7 +60,7 @@ func init() {
 }
 
 func (nat NATType) String() string {
-	if s, ok := NATStr[nat]; ok {
+	if s, ok := natStr[nat]; ok {
 		return s
 	}
 	return "Unknown"
@@ -123,7 +123,7 @@ const (
 	attributeUseCandidate           = 0x0025
 	attributePadding                = 0x0026
 	attributeResponsePort           = 0x0027
-	attributeConnectionId           = 0x002a
+	attributeConnectionID           = 0x002a
 	attributeXorMappedAddressExp    = 0x8020
 	attributeSoftware               = 0x8022
 	attributeAlternateServer        = 0x8023

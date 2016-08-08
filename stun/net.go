@@ -30,34 +30,31 @@ const (
 	defaultTimeout = 100
 )
 
-func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string, changeIP bool, changePort bool) (*packet, error) {
+func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string, changeIP bool, changePort bool) (*response, error) {
 	// Construct packet.
-	packet, err := newPacket()
+	pkt, err := newPacket()
 	if err != nil {
-		return nil, err
+		resp := newNilResponse()
+		return resp, err
 	}
-	packet.types = typeBindingRequest
+	pkt.types = typeBindingRequest
 	attribute := newSoftwareAttribute(softwareName)
-	packet.addAttribute(*attribute)
+	pkt.addAttribute(*attribute)
 	if changeIP || changePort {
 		attribute = newChangeReqAttribute(changeIP, changePort)
-		packet.addAttribute(*attribute)
+		pkt.addAttribute(*attribute)
 	}
-	attribute = newFingerprintAttribute(packet)
-	packet.addAttribute(*attribute)
+	attribute = newFingerprintAttribute(pkt)
+	pkt.addAttribute(*attribute)
 	// Send packet.
-	packet, err = c.send(packet, conn, addr)
-	if err != nil {
-		return nil, err
-	}
-	return packet, nil
+	return c.send(pkt, conn, addr)
 }
 
 // RFC 3489: Clients SHOULD retransmit the request starting with an interval
 // of 100ms, doubling every retransmit until the interval reaches 1.6s.
 // Retransmissions continue with intervals of 1.6s until a response is
 // received, or a total of 9 requests have been sent.
-func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*packet, error) {
+func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*response, error) {
 	if debug {
 		fmt.Print(hex.Dump(pkt.bytes()))
 	}
@@ -65,14 +62,14 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*packet,
 	for i := 0; i < numRetransmit; i++ {
 		length, err := conn.WriteTo(pkt.bytes(), addr)
 		if err != nil {
-			return nil, err
+			return newNilResponse(), err
 		}
 		if length != len(pkt.bytes()) {
-			return nil, errors.New("Error in sending data.")
+			return newNilResponse(), errors.New("Error in sending data.")
 		}
 		err = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Millisecond))
 		if err != nil {
-			return nil, err
+			return newNilResponse(), err
 		}
 		if timeout < 1600 {
 			timeout *= 2
@@ -84,7 +81,7 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*packet,
 				if err.(net.Error).Timeout() {
 					break
 				}
-				return nil, err
+				return newNilResponse(), err
 			}
 			p, err := newPacketFromBytes(packetBytes[0:length])
 			if !bytes.Equal(pkt.transID, p.transID) {
@@ -93,9 +90,11 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*packet,
 			if debug {
 				fmt.Print(hex.Dump(pkt.bytes()))
 			}
-			p.raddr = raddr
-			return p, err
+			resp := newResponse(p, conn)
+			resp.serverAddr = newHostFromStr(raddr.String())
+
+			return resp, err
 		}
 	}
-	return nil, nil
+	return newNilResponse(), nil
 }

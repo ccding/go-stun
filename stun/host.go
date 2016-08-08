@@ -17,6 +17,7 @@
 package stun
 
 import (
+	"encoding/binary"
 	"net"
 	"strconv"
 )
@@ -26,6 +27,29 @@ type Host struct {
 	family uint16
 	ip     string
 	port   uint16
+}
+
+func newHostFromStr(s string) *Host {
+	udpAddr, err := net.ResolveUDPAddr("udp", s)
+	if err != nil {
+		return nil
+	}
+	host := new(Host)
+	host.ip = udpAddr.IP.String()
+	host.port = uint16(udpAddr.Port)
+	return host
+}
+
+func newHostFromBytes(v []byte) *Host {
+	host := new(Host)
+	host.family = binary.BigEndian.Uint16(v[0:2])
+	host.port = binary.BigEndian.Uint16(v[2:4])
+	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
+	if host.family == attributeFamilyIPv4 {
+		v = v[:8]
+	}
+	host.ip = net.IP(v[4:]).String()
+	return host
 }
 
 // Family returns the family type of a host (IPv4 or IPv6).

@@ -20,7 +20,6 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
-	"net"
 )
 
 var debug = false
@@ -35,7 +34,6 @@ type packet struct {
 	length     uint16
 	transID    []byte // 4 bytes magic cookie + 12 bytes transaction id
 	attributes []attribute
-	raddr      net.Addr
 }
 
 func newPacket() (*packet, error) {
@@ -48,7 +46,6 @@ func newPacket() (*packet, error) {
 	}
 	v.attributes = make([]attribute, 0, 10)
 	v.length = 0
-	v.raddr = nil
 	return v, nil
 }
 
@@ -74,7 +71,6 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 		packet.addAttribute(*attribute)
 		pos += align(length) + 4
 	}
-	packet.raddr = nil
 	return packet, nil
 }
 
