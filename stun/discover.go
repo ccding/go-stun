@@ -73,14 +73,10 @@ func (c *Client) discover(conn net.PacketConn, addr net.Addr, softwareName strin
 	if err != nil {
 		return NATError, nil, err
 	}
-	logger.Debugln("Received from:", resp.serverAddr)
-	logger.Debugln("Received: isNil:", resp.packet == nil)
+	logger.Debugln("Received:", resp.String())
 	if resp.packet == nil {
 		return NATBlocked, nil, nil
 	}
-	logger.Debugln("Received: extAddr:", resp.mappedAddr)
-	logger.Debugln("Received: changedAddr:", resp.changedAddr)
-	logger.Debugln("Received: identical:", resp.identical)
 	exHostIP := resp.mappedAddr.IP()
 	changedAddrHost := resp.changedAddr
 	if changedAddrHost == nil {
@@ -92,10 +88,7 @@ func (c *Client) discover(conn net.PacketConn, addr net.Addr, softwareName strin
 	if err != nil {
 		return NATError, resp.mappedAddr, err
 	}
-	if resp.packet != nil {
-		logger.Debugln("Received from:", resp.serverAddr)
-	}
-	logger.Debugln("Received: isNil:", resp.packet == nil)
+	logger.Debugln("Received:", resp.String())
 	if resp.identical {
 		if resp.packet == nil {
 			return NATSymetricUDPFirewall, resp.mappedAddr, nil
@@ -112,14 +105,12 @@ func (c *Client) discover(conn net.PacketConn, addr net.Addr, softwareName strin
 	if err != nil {
 		return NATError, resp.mappedAddr, err
 	}
-	logger.Debugln("Received from:", resp.serverAddr)
-	logger.Debugln("Received: isNil:", resp.packet == nil)
+	logger.Debugln("Received:", resp.String())
 	if resp.packet == nil {
 		// It should be NAT_BLOCKED, but will be detected in the first
 		// step. So this will never happen.
 		return NATUnknown, resp.mappedAddr, nil
 	}
-	logger.Debugln("Received: extAddr:", resp.mappedAddr)
 	if exHostIP == resp.mappedAddr.IP() {
 		tmpAddr, err := net.ResolveUDPAddr("udp", addr.String())
 		if err != nil {
@@ -137,8 +128,7 @@ func (c *Client) discover(conn net.PacketConn, addr net.Addr, softwareName strin
 		if err != nil {
 			return NATError, resp.mappedAddr, err
 		}
-		logger.Debugln("Received from:", resp.mappedAddr)
-		logger.Debugln("Received: isNil:", resp.packet == nil)
+		logger.Debugln("Received:", resp.String())
 		if resp.packet == nil {
 			return NATPortRestricted, resp.mappedAddr, nil
 		}
