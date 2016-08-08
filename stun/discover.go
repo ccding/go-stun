@@ -127,7 +127,7 @@ func (c *Client) discover(conn net.PacketConn, addr net.Addr, softwareName strin
 			return NATError, mappedAddr, err
 		}
 		logger.Debugln("Do Test3")
-		logger.Debugln("Send To:", addr)
+		logger.Debugln("Send To:", changePortAddr)
 		resp, err = c.test3(conn, changePortAddr, softwareName)
 		if err != nil {
 			return NATError, mappedAddr, err
