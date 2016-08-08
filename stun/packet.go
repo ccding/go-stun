@@ -37,15 +37,15 @@ func SetDebug(d bool) {
 type packet struct {
 	types      uint16
 	length     uint16
-	id         []byte // 4 bytes magic cookie + 12 bytes transaction id
+	transId    []byte // 4 bytes magic cookie + 12 bytes transaction id
 	attributes []attribute
 }
 
 func newPacket() (*packet, error) {
 	v := new(packet)
-	v.id = make([]byte, 16)
-	binary.BigEndian.PutUint32(v.id[:4], magicCookie)
-	_, err := rand.Read(v.id[4:])
+	v.transId = make([]byte, 16)
+	binary.BigEndian.PutUint32(v.transId[:4], magicCookie)
+	_, err := rand.Read(v.transId[4:])
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 	}
 	packet.types = binary.BigEndian.Uint16(packetBytes[0:2])
 	packet.length = binary.BigEndian.Uint16(packetBytes[2:4])
-	packet.id = packetBytes[4:20]
+	packet.transId = packetBytes[4:20]
 	for pos := uint16(20); pos < uint16(len(packetBytes)); {
 		types := binary.BigEndian.Uint16(packetBytes[pos : pos+2])
 		length := binary.BigEndian.Uint16(packetBytes[pos+2 : pos+4])
@@ -88,7 +88,7 @@ func (v *packet) bytes() []byte {
 	packetBytes := make([]byte, 4)
 	binary.BigEndian.PutUint16(packetBytes[0:2], v.types)
 	binary.BigEndian.PutUint16(packetBytes[2:4], v.length)
-	packetBytes = append(packetBytes, v.id...)
+	packetBytes = append(packetBytes, v.transId...)
 	for _, a := range v.attributes {
 		buf := make([]byte, 2)
 		binary.BigEndian.PutUint16(buf, a.types)
@@ -130,7 +130,7 @@ func (v *packet) changeAddr() *Host {
 func (v *packet) xorMappedAddr() *Host {
 	for _, a := range v.attributes {
 		if (a.types == attributeXorMappedAddress) || (a.types == attributeXorMappedAddressExp) {
-			return a.xorMappedAddr(v.id)
+			return a.xorMappedAddr(v.transId)
 		}
 	}
 	return nil
@@ -170,7 +170,7 @@ func (v *packet) send(conn net.PacketConn, addr net.Addr) (net.Addr, *packet, er
 				return nil, nil, err
 			}
 			pkt, err := newPacketFromBytes(packetBytes[0:length])
-			if !bytes.Equal(v.id, pkt.id) {
+			if !bytes.Equal(v.transId, pkt.transId) {
 				continue
 			}
 			if debug {
