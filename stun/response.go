@@ -48,8 +48,10 @@ func newResponse(pkt *packet, conn net.PacketConn) *response {
 	}
 	// compute changedAddr
 	changedAddr := pkt.getChangedAddr()
-	changedAddrHost := newHostFromStr(changedAddr.String())
-	resp.changedAddr = changedAddrHost
+	if changedAddr != nil {
+		changedAddrHost := newHostFromStr(changedAddr.String())
+		resp.changedAddr = changedAddrHost
+	}
 
 	return resp
 }
