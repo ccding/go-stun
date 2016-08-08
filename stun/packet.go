@@ -22,13 +22,6 @@ import (
 	"errors"
 )
 
-var debug = false
-
-// SetDebug sets the library to debug mode, which prints all the network traffic.
-func SetDebug(d bool) {
-	debug = d
-}
-
 type packet struct {
 	types      uint16
 	length     uint16

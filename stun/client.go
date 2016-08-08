@@ -52,8 +52,14 @@ func NewClientWithConnection(conn net.PacketConn) *Client {
 
 // SetVerbose sets the client to be in the verbose mode, which prints
 // information in the discover process.
-func (c *Client) SetVerbose(verbose bool) {
-	c.logger.SetDebug(verbose)
+func (c *Client) SetVerbose(v bool) {
+	c.logger.SetDebug(v)
+}
+
+// SetVVerbose sets the client to be in the double verbose mode, which prints
+// information and packet in the discover process.
+func (c *Client) SetVVerbose(v bool) {
+	c.logger.SetInfo(v)
 }
 
 // SetServerHost allows user to set the STUN hostname and port.
