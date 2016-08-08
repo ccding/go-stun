@@ -17,7 +17,6 @@
 package stun
 
 import (
-	"encoding/binary"
 	"net"
 	"strconv"
 )
@@ -35,20 +34,13 @@ func newHostFromStr(s string) *Host {
 		return nil
 	}
 	host := new(Host)
+	if udpAddr.IP.To4 != nil {
+		host.family = attributeFamilyIPv4
+	} else {
+		host.family = attributeFamilyIPV6
+	}
 	host.ip = udpAddr.IP.String()
 	host.port = uint16(udpAddr.Port)
-	return host
-}
-
-func newHostFromBytes(v []byte) *Host {
-	host := new(Host)
-	host.family = binary.BigEndian.Uint16(v[0:2])
-	host.port = binary.BigEndian.Uint16(v[2:4])
-	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
-	if host.family == attributeFamilyIPv4 {
-		v = v[:8]
-	}
-	host.ip = net.IP(v[4:]).String()
 	return host
 }
 

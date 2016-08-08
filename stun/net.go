@@ -27,6 +27,8 @@ import (
 const (
 	numRetransmit  = 9
 	defaultTimeout = 100
+	maxTimeout     = 1600
+	maxPacketSize  = 1024
 )
 
 func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string, changeIP bool, changePort bool) (*response, error) {
@@ -55,7 +57,9 @@ func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName
 func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*response, error) {
 	c.logger.Info("\n" + hex.Dump(pkt.bytes()))
 	timeout := defaultTimeout
+	packetBytes := make([]byte, maxPacketSize)
 	for i := 0; i < numRetransmit; i++ {
+		// Send packet to the server.
 		length, err := conn.WriteTo(pkt.bytes(), addr)
 		if err != nil {
 			return nil, err
@@ -67,11 +71,11 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 		if err != nil {
 			return nil, err
 		}
-		if timeout < 1600 {
+		if timeout < maxTimeout {
 			timeout *= 2
 		}
 		for {
-			packetBytes := make([]byte, 1024)
+			// Read from the port.
 			length, raddr, err := conn.ReadFrom(packetBytes)
 			if err != nil {
 				if err.(net.Error).Timeout() {
@@ -80,13 +84,17 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 				return nil, err
 			}
 			p, err := newPacketFromBytes(packetBytes[0:length])
+			if err != nil {
+				return nil, err
+			}
+			// If transId mismatches, keep reading until get a
+			// matched packet or timeout.
 			if !bytes.Equal(pkt.transID, p.transID) {
 				continue
 			}
-			c.logger.Info("\n" + hex.Dump(pkt.bytes()))
+			c.logger.Info("\n" + hex.Dump(packetBytes[0:length]))
 			resp := newResponse(p, conn)
 			resp.serverAddr = newHostFromStr(raddr.String())
-
 			return resp, err
 		}
 	}

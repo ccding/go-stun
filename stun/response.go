@@ -56,6 +56,7 @@ func newResponse(pkt *packet, conn net.PacketConn) *response {
 	return resp
 }
 
+// String is only used for verbose mode output.
 func (r *response) String() string {
 	if r == nil {
 		return "Nil"

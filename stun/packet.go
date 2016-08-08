@@ -46,13 +46,11 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 	if len(packetBytes) < 24 {
 		return nil, errors.New("Received data length too short.")
 	}
-	packet, err := newPacket()
-	if err != nil {
-		return nil, err
-	}
-	packet.types = binary.BigEndian.Uint16(packetBytes[0:2])
-	packet.length = binary.BigEndian.Uint16(packetBytes[2:4])
-	packet.transID = packetBytes[4:20]
+	pkt := new(packet)
+	pkt.types = binary.BigEndian.Uint16(packetBytes[0:2])
+	pkt.length = binary.BigEndian.Uint16(packetBytes[2:4])
+	pkt.transID = packetBytes[4:20]
+	pkt.attributes = make([]attribute, 0, 10)
 	for pos := uint16(20); pos < uint16(len(packetBytes)); {
 		types := binary.BigEndian.Uint16(packetBytes[pos : pos+2])
 		length := binary.BigEndian.Uint16(packetBytes[pos+2 : pos+4])
@@ -61,10 +59,10 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 		}
 		value := packetBytes[pos+4 : pos+4+length]
 		attribute := newAttribute(types, value)
-		packet.addAttribute(*attribute)
+		pkt.addAttribute(*attribute)
 		pos += align(length) + 4
 	}
-	return packet, nil
+	return pkt, nil
 }
 
 func (v *packet) addAttribute(a attribute) {
@@ -103,7 +101,7 @@ func (v *packet) getChangedAddr() *Host {
 func (v *packet) getAddr(attribute uint16) *Host {
 	for _, a := range v.attributes {
 		if a.types == attribute {
-			return a.address()
+			return a.rawAddr()
 		}
 	}
 	return nil

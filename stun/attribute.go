@@ -93,7 +93,7 @@ func (v *attribute) xorMappedAddr(transID []byte) *Host {
 //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //
 //               Figure 5: Format of MAPPED-ADDRESS Attribute
-func (v *attribute) address() *Host {
+func (v *attribute) rawAddr() *Host {
 	host := new(Host)
 	host.family = binary.BigEndian.Uint16(v.value[0:2])
 	host.port = binary.BigEndian.Uint16(v.value[2:4])
