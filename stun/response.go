@@ -35,7 +35,7 @@ func newResponse(pkt *packet, conn net.PacketConn) *response {
 		return resp
 	}
 	// RFC 3489 doesn't require the server return XOR mapped address.
-	mappedAddr := pkt.xorMappedAddr()
+	mappedAddr := pkt.getXorMappedAddr()
 	if mappedAddr == nil {
 		mappedAddr = pkt.getMappedAddr()
 	}

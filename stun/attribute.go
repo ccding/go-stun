@@ -67,7 +67,7 @@ func newChangeReqAttribute(changeIP bool, changePort bool) *attribute {
 //     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //
 //             Figure 6: Format of XOR-MAPPED-ADDRESS Attribute
-func (v *attribute) xorMappedAddr(transID []byte) *Host {
+func (v *attribute) xorAddr(transID []byte) *Host {
 	xorIP := make([]byte, 16)
 	for i := 0; i < len(v.value)-4; i++ {
 		xorIP[i] = v.value[i+4] ^ transID[i]

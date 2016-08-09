@@ -87,18 +87,18 @@ func (v *packet) bytes() []byte {
 }
 
 func (v *packet) getSourceAddr() *Host {
-	return v.getAddr(attributeSourceAddress)
+	return v.getRawAddr(attributeSourceAddress)
 }
 
 func (v *packet) getMappedAddr() *Host {
-	return v.getAddr(attributeMappedAddress)
+	return v.getRawAddr(attributeMappedAddress)
 }
 
 func (v *packet) getChangedAddr() *Host {
-	return v.getAddr(attributeChangedAddress)
+	return v.getRawAddr(attributeChangedAddress)
 }
 
-func (v *packet) getAddr(attribute uint16) *Host {
+func (v *packet) getRawAddr(attribute uint16) *Host {
 	for _, a := range v.attributes {
 		if a.types == attribute {
 			return a.rawAddr()
@@ -107,10 +107,18 @@ func (v *packet) getAddr(attribute uint16) *Host {
 	return nil
 }
 
-func (v *packet) xorMappedAddr() *Host {
+func (v *packet) getXorMappedAddr() *Host {
+	addr := v.getXorAddr(attributeXorMappedAddress)
+	if addr == nil {
+		addr = v.getXorAddr(attributeXorMappedAddressExp)
+	}
+	return addr
+}
+
+func (v *packet) getXorAddr(attribute uint16) *Host {
 	for _, a := range v.attributes {
-		if (a.types == attributeXorMappedAddress) || (a.types == attributeXorMappedAddressExp) {
-			return a.xorMappedAddr(v.transID)
+		if a.types == attribute {
+			return a.xorAddr(v.transID)
 		}
 	}
 	return nil
