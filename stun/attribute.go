@@ -95,7 +95,7 @@ func (v *attribute) xorAddr(transID []byte) *Host {
 //               Figure 5: Format of MAPPED-ADDRESS Attribute
 func (v *attribute) rawAddr() *Host {
 	host := new(Host)
-	host.family = binary.BigEndian.Uint16(v.value[0:2])
+	host.family = uint16(v.value[1])
 	host.port = binary.BigEndian.Uint16(v.value[2:4])
 	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
 	if host.family == attributeFamilyIPv4 {
