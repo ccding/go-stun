@@ -19,7 +19,6 @@ package stun
 import (
 	"errors"
 	"net"
-	"strconv"
 )
 
 // Follow RFC 3489 and RFC 5389.
@@ -66,7 +65,7 @@ import (
 //                                  |N
 //                                  |       Port
 //                                  +------>Restricted
-func (c *Client) discover(conn net.PacketConn, addr net.Addr, softwareName string, logger *Logger) (NATType, *Host, error) {
+func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr, softwareName string, logger *Logger) (NATType, *Host, error) {
 	logger.Debugln("Do Test1")
 	logger.Debugln("Send To:", addr)
 	resp, err := c.test1(conn, addr, softwareName)
@@ -116,19 +115,10 @@ func (c *Client) discover(conn net.PacketConn, addr net.Addr, softwareName strin
 		return NATUnknown, mappedAddr, nil
 	}
 	if mappedAddr.IP() == resp.mappedAddr.IP() {
-		serverAddr, err := net.ResolveUDPAddr("udp", addr.String())
-		if err != nil {
-			return NATError, mappedAddr, err
-		}
-		port := serverAddr.Port
-		changePortAddrStr := net.JoinHostPort(changedAddr.IP(), strconv.Itoa(port))
-		changePortAddr, err := net.ResolveUDPAddr("udp", changePortAddrStr)
-		if err != nil {
-			return NATError, mappedAddr, err
-		}
+		caddr.Port = addr.Port
 		logger.Debugln("Do Test3")
-		logger.Debugln("Send To:", changePortAddr)
-		resp, err = c.test3(conn, changePortAddr, softwareName)
+		logger.Debugln("Send To:", caddr)
+		resp, err = c.test3(conn, caddr, softwareName)
 		if err != nil {
 			return NATError, mappedAddr, err
 		}
