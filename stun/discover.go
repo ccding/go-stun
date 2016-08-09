@@ -65,14 +65,14 @@ import (
 //                                  |N
 //                                  |       Port
 //                                  +------>Restricted
-func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr, softwareName string, logger *Logger) (NATType, *Host, error) {
-	logger.Debugln("Do Test1")
-	logger.Debugln("Send To:", addr)
-	resp, err := c.test1(conn, addr, softwareName)
+func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Host, error) {
+	c.logger.Debugln("Do Test1")
+	c.logger.Debugln("Send To:", addr)
+	resp, err := c.test1(conn, addr)
 	if err != nil {
 		return NATError, nil, err
 	}
-	logger.Debugln("Received:", resp)
+	c.logger.Debugln("Received:", resp)
 	if resp == nil {
 		return NATBlocked, nil, nil
 	}
@@ -85,13 +85,13 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr, softwareName s
 	if changedAddr == nil {
 		return NATError, mappedAddr, errors.New("No changed address.")
 	}
-	logger.Debugln("Do Test2")
-	logger.Debugln("Send To:", addr)
-	resp, err = c.test2(conn, addr, softwareName)
+	c.logger.Debugln("Do Test2")
+	c.logger.Debugln("Send To:", addr)
+	resp, err = c.test2(conn, addr)
 	if err != nil {
 		return NATError, mappedAddr, err
 	}
-	logger.Debugln("Received:", resp)
+	c.logger.Debugln("Received:", resp)
 	if identical {
 		if resp == nil {
 			return NATSymetricUDPFirewall, mappedAddr, nil
@@ -101,14 +101,14 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr, softwareName s
 	if resp != nil {
 		return NATFull, mappedAddr, nil
 	}
-	logger.Debugln("Do Test1")
-	logger.Debugln("Send To:", changedAddr)
+	c.logger.Debugln("Do Test1")
+	c.logger.Debugln("Send To:", changedAddr)
 	caddr, err := net.ResolveUDPAddr("udp", changedAddr.String())
-	resp, err = c.test1(conn, caddr, softwareName)
+	resp, err = c.test1(conn, caddr)
 	if err != nil {
 		return NATError, mappedAddr, err
 	}
-	logger.Debugln("Received:", resp)
+	c.logger.Debugln("Received:", resp)
 	if resp == nil {
 		// It should be NAT_BLOCKED, but will be detected in the first
 		// step. So this will never happen.
@@ -116,13 +116,13 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr, softwareName s
 	}
 	if mappedAddr.IP() == resp.mappedAddr.IP() {
 		caddr.Port = addr.Port
-		logger.Debugln("Do Test3")
-		logger.Debugln("Send To:", caddr)
-		resp, err = c.test3(conn, caddr, softwareName)
+		c.logger.Debugln("Do Test3")
+		c.logger.Debugln("Send To:", caddr)
+		resp, err = c.test3(conn, caddr)
 		if err != nil {
 			return NATError, mappedAddr, err
 		}
-		logger.Debugln("Received:", resp)
+		c.logger.Debugln("Received:", resp)
 		if resp == nil {
 			return NATPortRestricted, mappedAddr, nil
 		}

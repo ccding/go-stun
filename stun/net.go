@@ -31,14 +31,14 @@ const (
 	maxPacketSize  = 1024
 )
 
-func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, softwareName string, changeIP bool, changePort bool) (*response, error) {
+func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, changeIP bool, changePort bool) (*response, error) {
 	// Construct packet.
 	pkt, err := newPacket()
 	if err != nil {
 		return nil, err
 	}
 	pkt.types = typeBindingRequest
-	attribute := newSoftwareAttribute(softwareName)
+	attribute := newSoftwareAttribute(c.softwareName)
 	pkt.addAttribute(*attribute)
 	if changeIP || changePort {
 		attribute = newChangeReqAttribute(changeIP, changePort)

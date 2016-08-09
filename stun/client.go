@@ -98,7 +98,7 @@ func (c *Client) Discover() (NATType, *Host, error) {
 		}
 		defer conn.Close()
 	}
-	return c.discover(conn, serverUDPAddr, c.softwareName, c.logger)
+	return c.discover(conn, serverUDPAddr)
 }
 
 // Keepalive sends and receives a bind request, which ensures the mapping stays open
@@ -115,7 +115,7 @@ func (c *Client) Keepalive() (*Host, error) {
 		return nil, err
 	}
 
-	resp, err := c.test1(c.conn, serverUDPAddr, c.softwareName)
+	resp, err := c.test1(c.conn, serverUDPAddr)
 	if err != nil {
 		return nil, err
 	}
