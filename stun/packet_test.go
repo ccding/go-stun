@@ -58,5 +58,4 @@ func TestPacketAll(t *testing.T) {
 	if pkt.length < 24 {
 		t.Errorf("newPacketFromBytes error")
 	}
-
 }
