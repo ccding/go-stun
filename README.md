@@ -58,5 +58,4 @@ func main() {
 }
 ```
 
-More details please go to `main.go` and [GoDoc]
-(http://godoc.org/github.com/ccding/go-stun/stun)
+More details please go to `main.go` and [GoDoc](http://godoc.org/github.com/ccding/go-stun/stun)
