@@ -124,3 +124,22 @@ func (c *Client) Keepalive() (*Host, error) {
 	}
 	return resp.mappedAddr, nil
 }
+
+func (c *Client) KeepaliveOnlySend() error {
+	if c.conn == nil {
+		return errors.New("no connection available")
+	}
+	if c.serverAddr == "" {
+		c.SetServerAddr(DefaultServerAddr)
+	}
+	serverUDPAddr, err := net.ResolveUDPAddr("udp", c.serverAddr)
+	if err != nil {
+		return err
+	}
+
+	err = c.keepalivetest(c.conn, serverUDPAddr)
+	if err != nil {
+		return err
+	}
+	return nil
+}

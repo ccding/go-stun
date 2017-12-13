@@ -31,3 +31,25 @@ func (c *Client) test2(conn net.PacketConn, addr net.Addr) (*response, error) {
 func (c *Client) test3(conn net.PacketConn, addr net.Addr) (*response, error) {
 	return c.sendBindingReq(conn, addr, false, true)
 }
+func (c *Client) keepalivetest(conn net.PacketConn, addr net.Addr) error {
+	return c.sendKeepAliveTest(conn, addr)
+}
+func (c *Client) sendKeepAliveTest(conn net.PacketConn, addr net.Addr) error {
+	// Construct packet.
+	pkt, err := newPacket()
+	if err != nil {
+		return err
+	}
+	pkt.types = typeBindingRequest
+	attribute := newSoftwareAttribute(c.softwareName)
+	pkt.addAttribute(*attribute)
+
+	attribute = newFingerprintAttribute(pkt)
+	pkt.addAttribute(*attribute)
+	// Send packet.
+	_, err = conn.WriteTo(pkt.bytes(), addr)
+	if err != nil {
+		return err
+	}
+	return nil
+}
