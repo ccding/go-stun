@@ -126,6 +126,9 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	c.logger.Debugln("Do Test1")
 	c.logger.Debugln("Send To:", changedAddr)
 	caddr, err := net.ResolveUDPAddr("udp", changedAddr.String())
+	if err != nil {
+		c.logger.Debugf("ResolveUDPAddr error: %v", err)
+	}
 	resp, err = c.test1(conn, caddr)
 	if err != nil {
 		return NATError, mappedAddr, err
