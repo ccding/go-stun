@@ -44,7 +44,11 @@ func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, changeIP boo
 		attribute = newChangeReqAttribute(changeIP, changePort)
 		pkt.addAttribute(*attribute)
 	}
+	// length of fingerprint attribute must be included into crc,
+	// so we add it before calculating crc, then subtract it after calculating crc.
+	pkt.length += 8
 	attribute = newFingerprintAttribute(pkt)
+	pkt.length -= 8
 	pkt.addAttribute(*attribute)
 	// Send packet.
 	return c.send(pkt, conn, addr)
