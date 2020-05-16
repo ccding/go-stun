@@ -1,3 +1,7 @@
 language: go
-go: 1.6
-script: go test -v ./stun
+go:
+  - 1.6.x
+  - 1.14.x
+  - tip
+script:
+  - go test -v ./...
