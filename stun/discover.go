@@ -112,7 +112,7 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	}
 	if identical {
 		if resp == nil {
-			return NATSymmetricUDPFirewall, mappedAddr, nil
+			return SymmetricUDPFirewall, mappedAddr, nil
 		}
 		return NATNone, mappedAddr, nil
 	}
