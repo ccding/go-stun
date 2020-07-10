@@ -38,26 +38,27 @@ const (
 	NATSymmetric
 	NATRestricted
 	NATPortRestricted
-	NATSymmetricUDPFirewall
+	SymmetricUDPFirewall
 
 	// Deprecated spellings of these constants
-	NATSymetric            = NATSymmetric
-	NATSymetricUDPFirewall = NATSymmetricUDPFirewall
+	NATSymetric             = NATSymmetric
+	NATSymetricUDPFirewall  = SymmetricUDPFirewall
+	NATSymmetricUDPFirewall = SymmetricUDPFirewall
 )
 
 var natStr map[NATType]string
 
 func init() {
 	natStr = map[NATType]string{
-		NATError:                "Test failed",
-		NATUnknown:              "Unexpected response from the STUN server",
-		NATBlocked:              "UDP is blocked",
-		NATFull:                 "Full cone NAT",
-		NATSymmetric:            "Symmetric NAT",
-		NATRestricted:           "Restricted NAT",
-		NATPortRestricted:       "Port restricted NAT",
-		NATNone:                 "Not behind a NAT",
-		NATSymmetricUDPFirewall: "Symmetric UDP firewall",
+		NATError:             "Test failed",
+		NATUnknown:           "Unexpected response from the STUN server",
+		NATBlocked:           "UDP is blocked",
+		NATFull:              "Full cone NAT",
+		NATSymmetric:         "Symmetric NAT",
+		NATRestricted:        "Restricted NAT",
+		NATPortRestricted:    "Port restricted NAT",
+		NATNone:              "Not behind a NAT",
+		SymmetricUDPFirewall: "Symmetric UDP firewall",
 	}
 }
 
