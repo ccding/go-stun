@@ -1,3 +1,3 @@
-module github.com/ccding/go-stun
+module github.com/tiebingzhang/go-stun
 
 go 1.14

@@ -18,7 +18,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/ccding/go-stun/stun"
+	"github.com/tiebingzhang/go-stun/stun"
 )
 
 func main() {
