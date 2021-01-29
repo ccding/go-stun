@@ -30,8 +30,9 @@ type packet struct {
 func newPacket() (*packet, error) {
 	v := new(packet)
 	v.transID = make([]byte, 16)
-	binary.BigEndian.PutUint32(v.transID[:4], magicCookie)
-	_, err := rand.Read(v.transID[4:])
+	//binary.BigEndian.PutUint32(v.transID[:4], magicCookie)
+	//_, err := rand.Read(v.transID[4:])
+	_, err := rand.Read(v.transID[:])
 	if err != nil {
 		return nil, err
 	}
