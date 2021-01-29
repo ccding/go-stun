@@ -27,6 +27,7 @@ type Client struct {
 	softwareName string
 	conn         net.PacketConn
 	logger       *Logger
+	quicktest    bool
 }
 
 // NewClient returns a client without network connection. The network
@@ -58,6 +59,16 @@ func (c *Client) SetVerbose(v bool) {
 // information and packet in the discover process.
 func (c *Client) SetVVerbose(v bool) {
 	c.logger.SetInfo(v)
+}
+
+// SetQuickTest allows user to set quicktest to true/false; default is false;
+func (c *Client) SetQuickTest(val bool) {
+	c.quicktest = val
+}
+
+// GetQuickTest allows user to get quicktest
+func (c *Client) GetQuickTest() bool {
+	return c.quicktest
 }
 
 // SetServerHost allows user to set the STUN hostname and port.
