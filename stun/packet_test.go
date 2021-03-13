@@ -19,12 +19,12 @@ import (
 )
 
 func TestNewPacketFromBytes(t *testing.T) {
-	b := make([]byte, 23)
+	b := make([]byte, 19)
 	_, err := newPacketFromBytes(b)
 	if err == nil {
 		t.Errorf("newPacketFromBytes error")
 	}
-	b = make([]byte, 24)
+	b = make([]byte, 20)
 	_, err = newPacketFromBytes(b)
 	if err != nil {
 		t.Errorf("newPacketFromBytes error")
@@ -53,7 +53,7 @@ func TestPacketAll(t *testing.T) {
 	if pkt.types != 0 {
 		t.Errorf("newPacketFromBytes error")
 	}
-	if pkt.length < 24 {
+	if pkt.length < 20 {
 		t.Errorf("newPacketFromBytes error")
 	}
 }
