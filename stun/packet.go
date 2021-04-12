@@ -18,6 +18,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"math"
 )
 
 type packet struct {
@@ -41,21 +42,26 @@ func newPacket() (*packet, error) {
 }
 
 func newPacketFromBytes(packetBytes []byte) (*packet, error) {
-	if len(packetBytes) < 24 {
+	if len(packetBytes) < 20 {
 		return nil, errors.New("Received data length too short.")
+	}
+	if len(packetBytes) > math.MaxUint16+20 {
+		return nil, errors.New("Received data length too long.")
 	}
 	pkt := new(packet)
 	pkt.types = binary.BigEndian.Uint16(packetBytes[0:2])
 	pkt.length = binary.BigEndian.Uint16(packetBytes[2:4])
 	pkt.transID = packetBytes[4:20]
 	pkt.attributes = make([]attribute, 0, 10)
-	for pos := uint16(20); pos < uint16(len(packetBytes)); {
+	packetBytes = packetBytes[20:]
+	for pos := uint16(0); pos+4 < uint16(len(packetBytes)); {
 		types := binary.BigEndian.Uint16(packetBytes[pos : pos+2])
 		length := binary.BigEndian.Uint16(packetBytes[pos+2 : pos+4])
-		if pos+4+length > uint16(len(packetBytes)) {
+		end := pos + 4 + length
+		if end < pos+4 || end > uint16(len(packetBytes)) {
 			return nil, errors.New("Received data format mismatch.")
 		}
-		value := packetBytes[pos+4 : pos+4+length]
+		value := packetBytes[pos+4 : end]
 		attribute := newAttribute(types, value)
 		pkt.addAttribute(*attribute)
 		pos += align(length) + 4
