@@ -15,8 +15,41 @@
 package stun
 
 import (
+	"errors"
 	"net"
 )
+
+func (c *Client) sendWithLog(conn net.PacketConn, addr *net.UDPAddr, changeIP bool, changePort bool) (*response, error) {
+	c.logger.Debugln("Send To:", addr)
+	resp, err := c.sendBindingReq(conn, addr, changeIP, changePort)
+	if err != nil {
+		return nil, err
+	}
+	c.logger.Debugln("Received:", resp)
+	if resp != nil && !addrCompare(resp.serverAddr, addr, changeIP, changePort) {
+		return nil, errors.New("Server error: response IP/port")
+	}
+	return resp, err
+}
+
+// Make sure IP and port  have or haven't change
+func addrCompare(host *Host, addr *net.UDPAddr, IPChange, portChange bool) bool {
+	isIPChange := host.IP() != addr.IP.String()
+	isPortChange := host.Port() != uint16(addr.Port)
+	return isIPChange == IPChange && isPortChange == portChange
+}
+
+func (c *Client) test(conn net.PacketConn, addr *net.UDPAddr) (*response, error) {
+	return c.sendWithLog(conn, addr, false, false)
+}
+
+func (c *Client) testChangePort(conn net.PacketConn, addr *net.UDPAddr) (*response, error) {
+	return c.sendWithLog(conn, addr, false, true)
+}
+
+func (c *Client) testChangeBoth(conn net.PacketConn, addr *net.UDPAddr) (*response, error) {
+	return c.sendWithLog(conn, addr, true, true)
+}
 
 func (c *Client) test1(conn net.PacketConn, addr net.Addr) (*response, error) {
 	return c.sendBindingReq(conn, addr, false, false)

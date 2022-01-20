@@ -99,6 +99,27 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	return c.discover(conn, serverUDPAddr)
 }
 
+func (c *Client) BehaviorTest() (*NATBehavior, error) {
+	if c.serverAddr == "" {
+		c.SetServerAddr(DefaultServerAddr)
+	}
+	serverUDPAddr, err := net.ResolveUDPAddr("udp", c.serverAddr)
+	if err != nil {
+		return nil, err
+	}
+	// Use the connection passed to the client if it is not nil, otherwise
+	// create a connection and close it at the end.
+	conn := c.conn
+	if conn == nil {
+		conn, err = net.ListenUDP("udp", nil)
+		if err != nil {
+			return nil, err
+		}
+		defer conn.Close()
+	}
+	return c.behaviorTest(conn, serverUDPAddr)
+}
+
 // Keepalive sends and receives a bind request, which ensures the mapping stays open
 // Only applicable when client was created with a connection.
 func (c *Client) Keepalive() (*Host, error) {
