@@ -175,9 +175,6 @@ func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehav
 	if err != nil {
 		return nil, err
 	}
-	if resp1 == nil {
-		return nil, errors.New("NAT blocked.")
-	}
 	// identical used to check if it is open Internet or not.
 	if resp1.identical {
 		return nil, errors.New("Not behind a NAT.")
