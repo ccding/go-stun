@@ -86,10 +86,10 @@ func init() {
 
 	// Defined in RFC 3489
 	natNormalTypeStr = map[NATBehavior]string{
-		NATBehavior{BehaviorTypeEndpoint, BehaviorTypeEndpoint}:       "Full cone NAT",
-		NATBehavior{BehaviorTypeEndpoint, BehaviorTypeAddr}:           "Restricted cone NAT",
-		NATBehavior{BehaviorTypeEndpoint, BehaviorTypeAddrAndPort}:    "Port Restricted cone NAT",
-		NATBehavior{BehaviorTypeAddrAndPort, BehaviorTypeAddrAndPort}: "Symmetric NAT",
+		{BehaviorTypeEndpoint, BehaviorTypeEndpoint}:       "Full cone NAT",
+		{BehaviorTypeEndpoint, BehaviorTypeAddr}:           "Restricted cone NAT",
+		{BehaviorTypeEndpoint, BehaviorTypeAddrAndPort}:    "Port Restricted cone NAT",
+		{BehaviorTypeAddrAndPort, BehaviorTypeAddrAndPort}: "Symmetric NAT",
 	}
 }
 
