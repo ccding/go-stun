@@ -43,42 +43,42 @@ func (l *Logger) SetInfo(v bool) {
 }
 
 // Debug outputs the log in the format of log.Print.
-func (l *Logger) Debug(v ...interface{}) {
+func (l *Logger) Debug(v ...any) {
 	if l.debug {
 		l.Print(v...)
 	}
 }
 
 // Debugf outputs the log in the format of log.Printf.
-func (l *Logger) Debugf(format string, v ...interface{}) {
+func (l *Logger) Debugf(format string, v ...any) {
 	if l.debug {
 		l.Printf(format, v...)
 	}
 }
 
 // Debugln outputs the log in the format of log.Println.
-func (l *Logger) Debugln(v ...interface{}) {
+func (l *Logger) Debugln(v ...any) {
 	if l.debug {
 		l.Println(v...)
 	}
 }
 
 // Info outputs the log in the format of log.Print.
-func (l *Logger) Info(v ...interface{}) {
+func (l *Logger) Info(v ...any) {
 	if l.info {
 		l.Print(v...)
 	}
 }
 
 // Infof outputs the log in the format of log.Printf.
-func (l *Logger) Infof(format string, v ...interface{}) {
+func (l *Logger) Infof(format string, v ...any) {
 	if l.info {
 		l.Printf(format, v...)
 	}
 }
 
 // Infoln outputs the log in the format of log.Println.
-func (l *Logger) Infoln(v ...interface{}) {
+func (l *Logger) Infoln(v ...any) {
 	if l.info {
 		l.Println(v...)
 	}
