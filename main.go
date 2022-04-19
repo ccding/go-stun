@@ -68,5 +68,4 @@ func behaviorTest(c *stun.Client) {
 		fmt.Println("Filtering Behavior:", natBehavior.FilteringType)
 		fmt.Println("   Normal NAT Type:", natBehavior.NormalType())
 	}
-	return
 }
