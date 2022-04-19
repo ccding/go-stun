@@ -99,6 +99,7 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	return c.discover(conn, serverUDPAddr)
 }
 
+// BehaviorTest performs STUN behavior tests.
 func (c *Client) BehaviorTest() (*NATBehavior, error) {
 	if c.serverAddr == "" {
 		c.SetServerAddr(DefaultServerAddr)
