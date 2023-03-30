@@ -17,36 +17,44 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/ccding/go-stun/stun"
 )
 
 func main() {
 	var serverAddr = flag.String("s", stun.DefaultServerAddr, "STUN server address")
-	var b = flag.Bool("b", false, "NAT behavior test mode")
-	var v = flag.Bool("v", false, "verbose mode")
-	var vv = flag.Bool("vv", false, "double verbose mode (includes -v)")
-	var vvv = flag.Bool("vvv", false, "triple verbose mode (includes -v and -vv)")
+	var behaviorTestMode = flag.Bool("b", false, "Enable NAT behavior test mode")
+	var verboseLevel = flag.Int("v", 0, "Verbose level (0: none, 1: verbose, 2: double verbose, 3: triple verbose)")
 	flag.Parse()
 
-	// Creates a STUN client. NewClientWithConnection can also be used if you want to handle the UDP listener by yourself.
-	client := stun.NewClient()
-	// The default addr (stun.DefaultServerAddr) will be used unless we call SetServerAddr.
-	client.SetServerAddr(*serverAddr)
-	// Non verbose mode will be used by default unless we call SetVerbose(true) or SetVVerbose(true).
-	client.SetVerbose(*v || *vv || *vvv)
-	client.SetVVerbose(*vv || *vvv)
+	// Validate verbose level
+	if *verboseLevel < 0 || *verboseLevel > 3 {
+		fmt.Fprintln(os.Stderr, "Error: Invalid verbose level. Use -v with values 0, 1, 2, or 3.")
+		os.Exit(1)
+	}
 
-	if *b {
-		behaviorTest(client)
+	// Create a STUN client
+	client := stun.NewClient()
+	client.SetServerAddr(*serverAddr)
+	client.SetVerbose(*verboseLevel >= 1)
+	client.SetVVerbose(*verboseLevel >= 2)
+
+	// Run behavior test if specified
+	if *behaviorTestMode {
+		err := runBehaviorTest(client)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			os.Exit(1)
+		}
 		return
 	}
 
-	// Discover the NAT and return the result.
+	// Discover the NAT
 	nat, host, err := client.Discover()
 	if err != nil {
-		fmt.Println(err)
-		return
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
 	}
 
 	fmt.Println("NAT Type:", nat)
@@ -57,10 +65,10 @@ func main() {
 	}
 }
 
-func behaviorTest(c *stun.Client) {
+func runBehaviorTest(c *stun.Client) error {
 	natBehavior, err := c.BehaviorTest()
 	if err != nil {
-		fmt.Println(err)
+		return err
 	}
 
 	if natBehavior != nil {
@@ -68,4 +76,5 @@ func behaviorTest(c *stun.Client) {
 		fmt.Println("Filtering Behavior:", natBehavior.FilteringType)
 		fmt.Println("   Normal NAT Type:", natBehavior.NormalType())
 	}
+	return nil
 }
