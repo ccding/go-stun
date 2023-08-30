@@ -16,6 +16,7 @@ package stun
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 )
@@ -24,6 +25,7 @@ import (
 // to discover NAT type.
 type Client struct {
 	serverAddr   string
+	localPort    int
 	softwareName string
 	conn         net.PacketConn
 	logger       *Logger
@@ -70,6 +72,11 @@ func (c *Client) SetServerAddr(address string) {
 	c.serverAddr = address
 }
 
+// SetLocalPort allows user to set the local port to send request.
+func (c *Client) SetLocalPort(port int) {
+	c.localPort = port
+}
+
 // SetSoftwareName allows user to set the name of the software, which is used
 // for logging purpose (NOT used in the current implementation).
 func (c *Client) SetSoftwareName(name string) {
@@ -90,7 +97,14 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	// create a connection and close it at the end.
 	conn := c.conn
 	if conn == nil {
-		conn, err = net.ListenUDP("udp", nil)
+		var laddr *net.UDPAddr
+		if c.localPort != 0 {
+			laddr, err = net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", c.localPort))
+			if err != nil {
+				return NATError, nil, err
+			}
+		}
+		conn, err = net.ListenUDP("udp", laddr)
 		if err != nil {
 			return NATError, nil, err
 		}
