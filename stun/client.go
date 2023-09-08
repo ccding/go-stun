@@ -126,7 +126,14 @@ func (c *Client) BehaviorTest() (*NATBehavior, error) {
 	// create a connection and close it at the end.
 	conn := c.conn
 	if conn == nil {
-		conn, err = net.ListenUDP("udp", nil)
+		var laddr *net.UDPAddr
+		if c.localPort != 0 {
+			laddr, err = net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", c.localPort))
+			if err != nil {
+				return nil, err
+			}
+		}
+		conn, err = net.ListenUDP("udp", laddr)
 		if err != nil {
 			return nil, err
 		}
