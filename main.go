@@ -25,6 +25,7 @@ import (
 func main() {
 	var serverAddr = flag.String("s", stun.DefaultServerAddr, "STUN server address")
 	var localPort = flag.Int("p", 0, "The port on which to bind requests, set to 0 to pick a random port")
+	var localIP = flag.String("i", "", "The ip on which to bind requests, set to empty will use default")
 	var behaviorTestMode = flag.Bool("b", false, "Enable NAT behavior test mode")
 	var verboseLevel = flag.Int("v", 0, "Verbose level (0: none, 1: verbose, 2: double verbose, 3: triple verbose)")
 	flag.Parse()
@@ -39,6 +40,7 @@ func main() {
 	client := stun.NewClient()
 	client.SetServerAddr(*serverAddr)
 	client.SetLocalPort(*localPort)
+	client.SetLocalIP(*localIP)
 	client.SetVerbose(*verboseLevel >= 1)
 	client.SetVVerbose(*verboseLevel >= 2)
 

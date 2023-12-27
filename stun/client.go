@@ -25,6 +25,7 @@ import (
 // to discover NAT type.
 type Client struct {
 	serverAddr   string
+	localIP      string
 	localPort    int
 	softwareName string
 	conn         net.PacketConn
@@ -77,6 +78,11 @@ func (c *Client) SetLocalPort(port int) {
 	c.localPort = port
 }
 
+// SetLocalIP allows user to set the local ip address to send request.
+func (c *Client) SetLocalIP(ip string) {
+	c.localIP = ip
+}
+
 // SetSoftwareName allows user to set the name of the software, which is used
 // for logging purpose (NOT used in the current implementation).
 func (c *Client) SetSoftwareName(name string) {
@@ -98,12 +104,18 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	conn := c.conn
 	if conn == nil {
 		var laddr *net.UDPAddr
-		if c.localPort != 0 {
-			laddr, err = net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", c.localPort))
+
+		if c.localPort != 0  || c.localIP != "" {
+			var address = fmt.Sprintf("%s:%d", c.localIP, c.localPort)
+
+			laddr, err = net.ResolveUDPAddr("udp", address)
 			if err != nil {
 				return NATError, nil, err
 			}
+
+			c.logger.Debugln("Local listen address: " + address)
 		}
+
 		conn, err = net.ListenUDP("udp", laddr)
 		if err != nil {
 			return NATError, nil, err
@@ -127,11 +139,15 @@ func (c *Client) BehaviorTest() (*NATBehavior, error) {
 	conn := c.conn
 	if conn == nil {
 		var laddr *net.UDPAddr
-		if c.localPort != 0 {
-			laddr, err = net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", c.localPort))
+		if c.localPort != 0  || c.localIP != "" {
+			var address = fmt.Sprintf("%s:%d", c.localIP, c.localPort)
+
+			laddr, err = net.ResolveUDPAddr("udp", address)
 			if err != nil {
 				return nil, err
 			}
+
+			c.logger.Debugln("Local listen address: " + address)
 		}
 		conn, err = net.ListenUDP("udp", laddr)
 		if err != nil {
