@@ -16,6 +16,7 @@ package stun
 
 import (
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	"net"
 )
@@ -65,19 +66,43 @@ func newChangeReqAttribute(changeIP bool, changePort bool) *attribute {
 //     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //
 //             Figure 6: Format of XOR-MAPPED-ADDRESS Attribute
-func (v *attribute) xorAddr(transID []byte) *Host {
-	xorIP := make([]byte, 16)
-	for i := 0; i < len(v.value)-4; i++ {
-		xorIP[i] = v.value[i+4] ^ transID[i]
+func (v *attribute) xorAddr(transID []byte) (*Host, error) {
+	if len(v.value) < 4 {
+		return nil, errors.New("attribute value too short")
 	}
 	family := uint16(v.value[1])
 	port := binary.BigEndian.Uint16(v.value[2:4])
-	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
+	
+	xorIP := make([]byte, 16)
+	limit := len(v.value) - 4
+	if limit > 16 {
+		limit = 16
+	}
+	if len(transID) < limit {
+		return nil, errors.New("transaction ID too short")
+	}
+	for i := 0; i < limit; i++ {
+		xorIP[i] = v.value[i+4] ^ transID[i]
+	}
+	
 	if family == attributeFamilyIPv4 {
+		if len(v.value) < 8 {
+			return nil, errors.New("IPv4 attribute length mismatch")
+		}
 		xorIP = xorIP[:4]
+	} else if family == attributeFamilyIPV6 {
+		if len(v.value) < 20 {
+			return nil, errors.New("IPv6 attribute length mismatch")
+		}
+	} else {
+		return nil, errors.New("unknown address family")
+	}
+	
+	if len(transID) < 2 {
+		return nil, errors.New("transaction ID too short for port XOR")
 	}
 	x := binary.BigEndian.Uint16(transID[:2])
-	return &Host{family, net.IP(xorIP).String(), port ^ x}
+	return &Host{family, net.IP(xorIP).String(), port ^ x}, nil
 }
 
 //       0                   1                   2                   3
@@ -91,14 +116,27 @@ func (v *attribute) xorAddr(transID []byte) *Host {
 //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //
 //               Figure 5: Format of MAPPED-ADDRESS Attribute
-func (v *attribute) rawAddr() *Host {
-	host := new(Host)
-	host.family = uint16(v.value[1])
-	host.port = binary.BigEndian.Uint16(v.value[2:4])
-	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
-	if host.family == attributeFamilyIPv4 {
-		v.value = v.value[:8]
+func (v *attribute) rawAddr() (*Host, error) {
+	if len(v.value) < 4 {
+		return nil, errors.New("attribute value too short")
 	}
-	host.ip = net.IP(v.value[4:]).String()
-	return host
+	family := uint16(v.value[1])
+	port := binary.BigEndian.Uint16(v.value[2:4])
+	
+	var ip string
+	if family == attributeFamilyIPv4 {
+		if len(v.value) < 8 {
+			return nil, errors.New("IPv4 attribute length mismatch")
+		}
+		ip = net.IP(v.value[4:8]).String()
+	} else if family == attributeFamilyIPV6 {
+		if len(v.value) < 20 {
+			return nil, errors.New("IPv6 attribute length mismatch")
+		}
+		ip = net.IP(v.value[4:20]).String()
+	} else {
+		return nil, errors.New("unknown address family")
+	}
+	
+	return &Host{family, ip, port}, nil
 }

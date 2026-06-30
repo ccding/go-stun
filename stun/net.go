@@ -95,9 +95,12 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 				continue
 			}
 			c.logger.Info("\n" + hex.Dump(packetBytes[0:length]))
-			resp := newResponse(p, conn)
+			resp, err := newResponse(p, conn)
+			if err != nil {
+				return nil, err
+			}
 			resp.serverAddr = newHostFromStr(raddr.String())
-			return resp, err
+			return resp, nil
 		}
 	}
 	return nil, nil

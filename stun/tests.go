@@ -32,7 +32,7 @@ func (c *Client) sendWithLog(conn net.PacketConn, addr *net.UDPAddr, changeIP bo
 	if resp != nil && !addrCompare(resp.serverAddr, addr, changeIP, changePort) {
 		return nil, errors.New("Server error: response IP/port")
 	}
-	return resp, err
+	return resp, nil
 }
 
 // Make sure IP and port  have or haven't change

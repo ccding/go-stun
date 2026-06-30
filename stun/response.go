@@ -28,15 +28,21 @@ type response struct {
 	identical   bool    // if mappedAddr is in local addr list
 }
 
-func newResponse(pkt *packet, conn net.PacketConn) *response {
+func newResponse(pkt *packet, conn net.PacketConn) (*response, error) {
 	resp := &response{pkt, nil, nil, nil, nil, false}
 	if pkt == nil {
-		return resp
+		return resp, nil
 	}
 	// RFC 3489 doesn't require the server return XOR mapped address.
-	mappedAddr := pkt.getXorMappedAddr()
+	mappedAddr, err := pkt.getXorMappedAddr()
+	if err != nil {
+		return nil, err
+	}
 	if mappedAddr == nil {
-		mappedAddr = pkt.getMappedAddr()
+		mappedAddr, err = pkt.getMappedAddr()
+		if err != nil {
+			return nil, err
+		}
 	}
 	resp.mappedAddr = mappedAddr
 	// compute identical
@@ -46,19 +52,25 @@ func newResponse(pkt *packet, conn net.PacketConn) *response {
 		resp.identical = isLocalAddress(localAddrStr, mappedAddrStr)
 	}
 	// compute changedAddr
-	changedAddr := pkt.getChangedAddr()
+	changedAddr, err := pkt.getChangedAddr()
+	if err != nil {
+		return nil, err
+	}
 	if changedAddr != nil {
 		changedAddrHost := newHostFromStr(changedAddr.String())
 		resp.changedAddr = changedAddrHost
 	}
 	// compute otherAddr
-	otherAddr := pkt.getOtherAddr()
+	otherAddr, err := pkt.getOtherAddr()
+	if err != nil {
+		return nil, err
+	}
 	if otherAddr != nil {
 		otherAddrHost := newHostFromStr(otherAddr.String())
 		resp.otherAddr = otherAddrHost
 	}
 
-	return resp
+	return resp, nil
 }
 
 // String is only used for verbose mode output.

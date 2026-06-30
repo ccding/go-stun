@@ -16,7 +16,6 @@ package stun
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"strconv"
 )
@@ -89,6 +88,25 @@ func (c *Client) SetSoftwareName(name string) {
 	c.softwareName = name
 }
 
+// acquireConn establishes a UDP socket connection using local IP and port settings,
+// or returns the pre-configured connection if available.
+func (c *Client) acquireConn() (net.PacketConn, error) {
+	if c.conn != nil {
+		return c.conn, nil
+	}
+	var laddr *net.UDPAddr
+	var err error
+	if c.localPort != 0 || c.localIP != "" {
+		address := net.JoinHostPort(c.localIP, strconv.Itoa(c.localPort))
+		laddr, err = net.ResolveUDPAddr("udp", address)
+		if err != nil {
+			return nil, err
+		}
+		c.logger.Debugln("Local listen address: " + address)
+	}
+	return net.ListenUDP("udp", laddr)
+}
+
 // Discover contacts the STUN server and gets the response of NAT type, host
 // for UDP punching.
 func (c *Client) Discover() (NATType, *Host, error) {
@@ -99,27 +117,11 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	if err != nil {
 		return NATError, nil, err
 	}
-	// Use the connection passed to the client if it is not nil, otherwise
-	// create a connection and close it at the end.
-	conn := c.conn
-	if conn == nil {
-		var laddr *net.UDPAddr
-
-		if c.localPort != 0  || c.localIP != "" {
-			var address = fmt.Sprintf("%s:%d", c.localIP, c.localPort)
-
-			laddr, err = net.ResolveUDPAddr("udp", address)
-			if err != nil {
-				return NATError, nil, err
-			}
-
-			c.logger.Debugln("Local listen address: " + address)
-		}
-
-		conn, err = net.ListenUDP("udp", laddr)
-		if err != nil {
-			return NATError, nil, err
-		}
+	conn, err := c.acquireConn()
+	if err != nil {
+		return NATError, nil, err
+	}
+	if c.conn == nil {
 		defer conn.Close()
 	}
 	return c.discover(conn, serverUDPAddr)
@@ -134,25 +136,11 @@ func (c *Client) BehaviorTest() (*NATBehavior, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Use the connection passed to the client if it is not nil, otherwise
-	// create a connection and close it at the end.
-	conn := c.conn
-	if conn == nil {
-		var laddr *net.UDPAddr
-		if c.localPort != 0  || c.localIP != "" {
-			var address = fmt.Sprintf("%s:%d", c.localIP, c.localPort)
-
-			laddr, err = net.ResolveUDPAddr("udp", address)
-			if err != nil {
-				return nil, err
-			}
-
-			c.logger.Debugln("Local listen address: " + address)
-		}
-		conn, err = net.ListenUDP("udp", laddr)
-		if err != nil {
-			return nil, err
-		}
+	conn, err := c.acquireConn()
+	if err != nil {
+		return nil, err
+	}
+	if c.conn == nil {
 		defer conn.Close()
 	}
 	return c.behaviorTest(conn, serverUDPAddr)
