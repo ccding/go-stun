@@ -28,7 +28,7 @@ type Logger struct {
 
 // NewLogger creates a default logger.
 func NewLogger() *Logger {
-	logger := &Logger{*log.New(os.Stdout, "", log.LstdFlags), false, false}
+	logger := &Logger{*log.New(os.Stderr, "", log.LstdFlags), false, false}
 	return logger
 }
 

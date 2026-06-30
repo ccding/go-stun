@@ -51,7 +51,10 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 	pkt := new(packet)
 	pkt.types = binary.BigEndian.Uint16(packetBytes[0:2])
 	pkt.length = binary.BigEndian.Uint16(packetBytes[2:4])
-	pkt.transID = packetBytes[4:20]
+	
+	pkt.transID = make([]byte, 16)
+	copy(pkt.transID, packetBytes[4:20])
+	
 	pkt.attributes = make([]attribute, 0, 10)
 	packetBytes = packetBytes[20:]
 	for pos := uint16(0); pos+4 < uint16(len(packetBytes)); {
@@ -61,7 +64,8 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 		if end < pos+4 || end > uint16(len(packetBytes)) {
 			return nil, errors.New("Received data format mismatch")
 		}
-		value := packetBytes[pos+4 : end]
+		value := make([]byte, length)
+		copy(value, packetBytes[pos+4 : end])
 		attribute := newAttribute(types, value)
 		pkt.addAttribute(*attribute)
 		pos += align(length) + 4
@@ -75,59 +79,65 @@ func (v *packet) addAttribute(a attribute) {
 }
 
 func (v *packet) bytes() []byte {
-	packetBytes := make([]byte, 4)
-	binary.BigEndian.PutUint16(packetBytes[0:2], v.types)
-	binary.BigEndian.PutUint16(packetBytes[2:4], v.length)
-	packetBytes = append(packetBytes, v.transID...)
+	size := 20 + int(v.length)
+	buf := make([]byte, size)
+	binary.BigEndian.PutUint16(buf[0:2], v.types)
+	binary.BigEndian.PutUint16(buf[2:4], v.length)
+	copy(buf[4:20], v.transID)
+	offset := 20
 	for _, a := range v.attributes {
-		buf := make([]byte, 2)
-		binary.BigEndian.PutUint16(buf, a.types)
-		packetBytes = append(packetBytes, buf...)
-		binary.BigEndian.PutUint16(buf, a.length)
-		packetBytes = append(packetBytes, buf...)
-		packetBytes = append(packetBytes, a.value...)
+		binary.BigEndian.PutUint16(buf[offset:offset+2], a.types)
+		binary.BigEndian.PutUint16(buf[offset+2:offset+4], a.length)
+		copy(buf[offset+4:offset+4+len(a.value)], a.value)
+		offset += 4 + len(a.value)
 	}
-	return packetBytes
+	return buf
 }
 
-func (v *packet) getSourceAddr() *Host {
+func (v *packet) getSourceAddr() (*Host, error) {
 	return v.getRawAddr(attributeSourceAddress)
 }
 
-func (v *packet) getMappedAddr() *Host {
+func (v *packet) getMappedAddr() (*Host, error) {
 	return v.getRawAddr(attributeMappedAddress)
 }
 
-func (v *packet) getChangedAddr() *Host {
+func (v *packet) getChangedAddr() (*Host, error) {
 	return v.getRawAddr(attributeChangedAddress)
 }
 
-func (v *packet) getOtherAddr() *Host {
+func (v *packet) getOtherAddr() (*Host, error) {
 	return v.getRawAddr(attributeOtherAddress)
 }
 
-func (v *packet) getRawAddr(attribute uint16) *Host {
+func (v *packet) getRawAddr(attribute uint16) (*Host, error) {
 	for _, a := range v.attributes {
 		if a.types == attribute {
 			return a.rawAddr()
 		}
 	}
-	return nil
+	return nil, nil
 }
 
-func (v *packet) getXorMappedAddr() *Host {
-	addr := v.getXorAddr(attributeXorMappedAddress)
-	if addr == nil {
-		addr = v.getXorAddr(attributeXorMappedAddressExp)
+func (v *packet) getXorMappedAddr() (*Host, error) {
+	addr, err := v.getXorAddr(attributeXorMappedAddress)
+	if err != nil {
+		return nil, err
 	}
-	return addr
+	if addr == nil {
+		addr, err = v.getXorAddr(attributeXorMappedAddressExp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return addr, nil
 }
 
-func (v *packet) getXorAddr(attribute uint16) *Host {
+func (v *packet) getXorAddr(attribute uint16) (*Host, error) {
 	for _, a := range v.attributes {
 		if a.types == attribute {
 			return a.xorAddr(v.transID)
 		}
 	}
-	return nil
+	return nil, nil
 }
