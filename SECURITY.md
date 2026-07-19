@@ -2,15 +2,16 @@
 
 ## Supported versions
 
-Security fixes are provided on a best-effort basis for the current default
-branch and the latest tagged release. Fixes are not normally backported to
-older releases, so users should upgrade to the newest available version.
+Security fixes land on the current default branch and are published in a new
+tagged release. Existing tags are not patched in place, so users should upgrade
+to a release containing the fix or, until one is available, to a reviewed
+commit on the default branch.
 
-| Version | Supported |
+| Version | Security updates |
 | --- | --- |
 | Current default branch | Yes |
-| Latest tagged release | Yes |
-| Older releases | No |
+| Latest tagged release | Fixes shipped as a new release |
+| Older tagged releases | No |
 
 ## Reporting a vulnerability
 
@@ -61,8 +62,8 @@ The following are generally not security vulnerabilities by themselves:
 - An unavailable or misconfigured third-party STUN server.
 - An unknown or inaccurate NAT classification caused by a server that does not
   support the required RFC 3489 or RFC 5780 discovery probes.
-- Issues that affect only unsupported releases and are already fixed in the
-  latest version.
+- Issues that affect only unsupported releases and are already fixed in a
+  newer supported version.
 
 ## Safe testing
 

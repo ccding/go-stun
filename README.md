@@ -1,6 +1,6 @@
 # go-stun
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/ccding/go-stun/stun.svg)](https://pkg.go.dev/github.com/ccding/go-stun/stun)
+[![Go Reference (latest release)](https://pkg.go.dev/badge/github.com/ccding/go-stun/stun.svg)](https://pkg.go.dev/github.com/ccding/go-stun/stun)
 [![Tests](https://github.com/ccding/go-stun/actions/workflows/go.yml/badge.svg)](https://github.com/ccding/go-stun/actions/workflows/go.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-red.svg)](LICENSE)
 
@@ -25,11 +25,16 @@ complete UDP hole-punching, ICE, or TURN solution.
 
 ## Install the command
 
-With Go 1.16 or newer:
+This README documents the current `master` branch. With Go 1.16 or newer,
+install that branch explicitly until the next release is tagged:
 
 ```console
-go install github.com/ccding/go-stun@latest
+go install github.com/ccding/go-stun@master
 ```
+
+The newest tag, `v0.1.5`, predates RFC 3489 compatibility mode, the `-legacy`
+flag, and `ErrBehaviorDiscoveryUnsupported`. Use `@latest` only if you need the
+older released interface.
 
 Ensure your Go binary directory (usually `$GOBIN` or `$GOPATH/bin`) is on
 `PATH`, then run:
@@ -71,7 +76,7 @@ Available options:
 | `-p port` | Bind requests to a local port; `0` selects an available port. |
 | `-b` | Run RFC 5780 mapping and filtering behavior tests. |
 | `-legacy` | Omit modern optional attributes for RFC 3489-only servers. |
-| `-v level` | Set verbosity from `0` (quiet) to `3`; use `2` or higher to include packet dumps. |
+| `-v level` | Set verbosity to `0` (quiet), `1` (protocol trace), or `2`/`3` (also dump packets in hex); values above `3` are rejected. |
 
 Use `go-stun -h` to see the current defaults. For example:
 
@@ -86,7 +91,7 @@ go-stun -v 1
 Add the package to a Go module:
 
 ```console
-go get github.com/ccding/go-stun/stun
+go get github.com/ccding/go-stun/stun@master
 ```
 
 Then create a client and call `Discover`:
@@ -118,8 +123,15 @@ func main() {
 
 If no server is configured, the client uses `stun.DefaultServerAddr`. Other
 configuration methods include `SetServerHost`, `SetLocalIP`, `SetLocalPort`,
-`SetSoftwareName`, and the verbosity setters. See the [package reference] for
-the complete API.
+`SetSoftwareName`, and the verbosity setters. For an existing socket, use
+`stun.NewClientWithConnection(conn)` with a `net.PacketConn` created by an
+applicable `net.Listen*` function; the caller remains responsible for closing
+the connection, and `Keepalive` can refresh its mapping.
+
+Run `go doc github.com/ccding/go-stun/stun` for documentation matching the
+version in your module. The linked [package reference] shows the latest tagged
+release and will not include `master`-only symbols until a new release is
+published.
 
 ### NAT behavior discovery
 
@@ -139,8 +151,10 @@ if errors.Is(err, stun.ErrBehaviorDiscoveryUnsupported) {
 	fmt.Println("Behavior test failed:", err)
 }
 
-if behavior != nil {
+if behavior != nil && behavior.MappingType != stun.BehaviorTypeUnknown {
 	fmt.Println("Mapping behavior:", behavior.MappingType)
+}
+if behavior != nil && behavior.FilteringType != stun.BehaviorTypeUnknown {
 	fmt.Println("Filtering behavior:", behavior.FilteringType)
 }
 ```
@@ -181,18 +195,29 @@ a GitHub issue.
 
 ## Development
 
-Run the test suite and static checks before submitting changes:
+Run the checks used by CI before submitting changes:
 
 ```console
-go test ./...
-go vet ./...
+git ls-files -z -- '*.go' | xargs -0 gofmt -l
+go mod tidy
+go mod verify
+go vet -mod=readonly ./...
+staticcheck -checks=all ./...
+go test -mod=readonly -race -shuffle=on -covermode=atomic -coverprofile=coverage.out ./...
+govulncheck -test ./...
 ```
+
+The formatting command should produce no output, and `go mod tidy` should not
+change `go.mod` or `go.sum`. CI also requires at least 84% statement coverage.
+See the [Go CI workflow] for the pinned Go and tool versions and the exact
+checks.
 
 ## License
 
 `go-stun` is available under the [Apache License 2.0](LICENSE).
 
 [package reference]: https://pkg.go.dev/github.com/ccding/go-stun/stun
+[Go CI workflow]: .github/workflows/go.yml
 [RFC 3489]: https://www.rfc-editor.org/rfc/rfc3489.html
 [RFC 5389]: https://www.rfc-editor.org/rfc/rfc5389.html
 [RFC 5780]: https://www.rfc-editor.org/rfc/rfc5780.html
