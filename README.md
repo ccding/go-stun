@@ -128,8 +128,8 @@ server does not provide a usable alternate address, it returns
 `stun.NATUnknown`, the mapped address, and a `nil` error. The mapped address is
 still valid even though the NAT type could not be determined.
 
-Call `BehaviorTest` (or use the CLI's `-b` option) for RFC 5780 mapping and
-filtering tests:
+Add `"errors"` to the import block, then call `BehaviorTest` (or use the CLI's
+`-b` option) for RFC 5780 mapping and filtering tests:
 
 ```go
 behavior, err := client.BehaviorTest()
@@ -145,8 +145,7 @@ if behavior != nil {
 }
 ```
 
-This snippet requires the standard library's `errors` package. A non-nil
-behavior result may contain partial results when a later probe fails.
+A non-nil behavior result may contain partial results when a later probe fails.
 
 ### RFC 3489 compatibility
 
