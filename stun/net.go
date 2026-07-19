@@ -31,7 +31,14 @@ const (
 )
 
 func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, changeIP bool, changePort bool) (*response, error) {
-	// Construct packet.
+	pkt, err := c.newBindingRequest(changeIP, changePort)
+	if err != nil {
+		return nil, err
+	}
+	return c.send(pkt, conn, addr)
+}
+
+func (c *Client) newBindingRequest(changeIP bool, changePort bool) (*packet, error) {
 	pkt, err := newPacket()
 	if err != nil {
 		return nil, err
@@ -67,8 +74,7 @@ func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, changeIP boo
 			return nil, err
 		}
 	}
-	// Send packet.
-	return c.send(pkt, conn, addr)
+	return pkt, nil
 }
 
 // RFC 3489: Clients SHOULD retransmit the request starting with an interval
@@ -126,25 +132,29 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 				continue
 			}
 			c.logger.Info("\n" + hex.Dump(packetBytes[0:length]))
-			if err := p.validateBindingResponseAttributes(); err != nil {
-				return nil, err
-			}
-			if p.types == typeBindingErrorResponse {
-				return nil, p.bindingError()
-			}
-			resp := newResponse(p, conn)
-			if resp.mappedAddr == nil {
-				return nil, errors.New("binding success response has no valid mapped address")
-			}
-			if raddr == nil {
-				return nil, errors.New("binding response has no source address")
-			}
-			resp.serverAddr = newHostFromStr(raddr.String())
-			if resp.serverAddr == nil {
-				return nil, errors.New("binding response has an invalid source address")
-			}
-			return resp, nil
+			return processBindingResponse(p, conn, raddr)
 		}
 	}
 	return nil, nil
+}
+
+func processBindingResponse(p *packet, conn localAddrProvider, source net.Addr) (*response, error) {
+	if err := p.validateBindingResponseAttributes(); err != nil {
+		return nil, err
+	}
+	if p.types == typeBindingErrorResponse {
+		return nil, p.bindingError()
+	}
+	resp := newResponse(p, conn)
+	if resp.mappedAddr == nil {
+		return nil, errors.New("binding success response has no valid mapped address")
+	}
+	if source == nil {
+		return nil, errors.New("binding response has no source address")
+	}
+	resp.serverAddr = newHostFromStr(source.String())
+	if resp.serverAddr == nil {
+		return nil, errors.New("binding response has an invalid source address")
+	}
+	return resp, nil
 }

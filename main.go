@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/ccding/go-stun/stun"
 )
@@ -30,6 +31,7 @@ func main() {
 	var localIP = flag.String("i", "", "The ip on which to bind requests, set to empty will use default")
 	var behaviorTestMode = flag.Bool("b", false, "Enable NAT behavior test mode")
 	var legacyMode = flag.Bool("legacy", false, "Enable compatibility with RFC 3489-only STUN servers")
+	var transport = flag.String("t", "udp", "STUN transport (udp or tcp)")
 	var verboseLevel = flag.Int("v", 0, "Verbose level (0: none, 1: verbose, 2: double verbose, 3: triple verbose)")
 	flag.Parse()
 
@@ -47,9 +49,14 @@ func main() {
 	client.SetRFC3489Compatibility(*legacyMode)
 	client.SetVerbose(*verboseLevel >= 1)
 	client.SetVVerbose(*verboseLevel >= 2)
+	network := strings.ToLower(*transport)
 
 	// Run behavior test if specified
 	if *behaviorTestMode {
+		if network != "udp" {
+			fmt.Fprintln(os.Stderr, "Error: NAT behavior tests require UDP transport")
+			os.Exit(1)
+		}
 		err := runBehaviorTest(client)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
@@ -58,18 +65,35 @@ func main() {
 		return
 	}
 
-	// Discover the NAT
-	nat, host, err := client.Discover()
+	// Discover the mapped transport address and, for UDP, the NAT type.
+	nat, host, hasNATType, err := runDiscovery(client, network)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("NAT Type:", nat)
+	if hasNATType {
+		fmt.Println("NAT Type:", nat)
+	} else {
+		fmt.Println("Transport: TCP")
+	}
 	if host != nil {
 		fmt.Println("External IP Family:", host.Family())
 		fmt.Println("External IP:", host.IP())
 		fmt.Println("External Port:", host.Port())
+	}
+}
+
+func runDiscovery(client *stun.Client, transport string) (stun.NATType, *stun.Host, bool, error) {
+	switch transport {
+	case "udp":
+		nat, host, err := client.Discover()
+		return nat, host, true, err
+	case "tcp":
+		host, err := client.DiscoverTCP()
+		return stun.NATUnknown, host, false, err
+	default:
+		return stun.NATError, nil, false, fmt.Errorf("unsupported STUN transport %q; use udp or tcp", transport)
 	}
 }
 

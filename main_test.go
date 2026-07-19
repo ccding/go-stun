@@ -33,6 +33,13 @@ func TestWriteBehaviorTestResultTreatsUnsupportedServerAsSuccess(t *testing.T) {
 	}
 }
 
+func TestRunDiscoveryRejectsUnknownTransport(t *testing.T) {
+	nat, host, hasNATType, err := runDiscovery(stun.NewClient(), "sctp")
+	if nat != stun.NATError || host != nil || hasNATType || err == nil {
+		t.Fatalf("runDiscovery() = %v, %#v, %v, %v", nat, host, hasNATType, err)
+	}
+}
+
 func TestWriteBehaviorTestResultPreservesUnsupportedNoTranslation(t *testing.T) {
 	var output bytes.Buffer
 	behavior := &stun.NATBehavior{NoTranslation: true}

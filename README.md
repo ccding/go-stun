@@ -4,9 +4,10 @@
 [![Tests](https://github.com/ccding/go-stun/actions/workflows/go.yml/badge.svg)](https://github.com/ccding/go-stun/actions/workflows/go.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-red.svg)](LICENSE)
 
-`go-stun` is a Go library and command-line client for STUN over UDP. It can
-discover the public IP address and port assigned to a UDP socket and, when the
-server supports the required probes, classify the client's NAT behavior.
+`go-stun` is a Go library and command-line client for STUN over UDP and TCP. It
+can discover the public IP address and port assigned to a socket and, for UDP
+when the server supports the required probes, classify the client's NAT
+behavior.
 
 STUN is one building block for NAT traversal. This project does not implement a
 complete UDP hole-punching, ICE, or TURN solution.
@@ -14,6 +15,7 @@ complete UDP hole-punching, ICE, or TURN solution.
 ## Features
 
 - Discover a socket's public (server-reflexive) IP address and port.
+- Perform basic STUN Binding transactions over UDP or TCP.
 - Send [RFC 5389] Binding requests with `SOFTWARE` and `FINGERPRINT`
   attributes.
 - Perform classic NAT type discovery based on [RFC 3489].
@@ -76,12 +78,14 @@ Available options:
 | `-p port` | Bind requests to a local port; `0` selects an available port. |
 | `-b` | Run RFC 5780 mapping and filtering behavior tests. |
 | `-legacy` | Omit modern optional attributes for RFC 3489-only servers. |
+| `-t udp|tcp` | Select UDP (the default) or TCP transport. TCP performs basic Binding only. |
 | `-v level` | Set verbosity to `0` (quiet), `1` (protocol trace), or `2`/`3` (also dump packets in hex); values above `3` are rejected. |
 
 Use `go-stun -h` to see the current defaults. For example:
 
 ```console
 go-stun -s stun.example.com:3478
+go-stun -s stun.example.com:3478 -t tcp
 go-stun -s stun.example.com:3478 -b
 go-stun -v 1
 ```
@@ -127,6 +131,20 @@ configuration methods include `SetServerHost`, `SetLocalIP`, `SetLocalPort`,
 `stun.NewClientWithConnection(conn)` with a `net.PacketConn` created by an
 applicable `net.Listen*` function; the caller remains responsible for closing
 the connection, and `Keepalive` can refresh its mapping.
+
+For a basic Binding transaction over TCP, call `DiscoverTCP`:
+
+```go
+mappedAddr, err := client.DiscoverTCP()
+```
+
+`DiscoverTCP` opens a TCP connection for the transaction and closes it before
+returning. Because a reflexive TCP address remains useful only while its
+connection is open, applications that need to retain the mapping should dial
+the server themselves and use `NewClientWithTCPConnection`. The caller owns
+that connection and can call `DiscoverTCP` again to refresh the mapping. Use
+`SetTCPTimeout` to replace the [RFC 8489] default transaction timeout of 39.5
+seconds.
 
 Run `go doc github.com/ccding/go-stun/stun` for documentation matching the
 version in your module. The linked [package reference] shows the latest tagged
@@ -185,7 +203,8 @@ result with those servers.
 
 UDP requests use the RFC 3489 retransmission schedule: nine sends beginning at
 100 ms, doubling up to a 1.6-second interval. A timed-out probe can consequently
-take several seconds.
+take several seconds. TCP requests rely on TCP reliability and are not
+retransmitted at the STUN layer.
 
 ## Security
 
@@ -221,3 +240,4 @@ checks.
 [RFC 3489]: https://www.rfc-editor.org/rfc/rfc3489.html
 [RFC 5389]: https://www.rfc-editor.org/rfc/rfc5389.html
 [RFC 5780]: https://www.rfc-editor.org/rfc/rfc5780.html
+[RFC 8489]: https://www.rfc-editor.org/rfc/rfc8489.html
