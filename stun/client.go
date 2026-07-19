@@ -51,16 +51,26 @@ func NewClientWithConnection(conn net.PacketConn) *Client {
 	return c
 }
 
+// ensureLogger makes the Client zero value safe to use. Constructors install
+// the same logger eagerly, while a directly allocated Client gets it on first
+// use.
+func (c *Client) ensureLogger() *Logger {
+	if c.logger == nil {
+		c.logger = NewLogger()
+	}
+	return c.logger
+}
+
 // SetVerbose sets the client to be in the verbose mode, which prints
 // information in the discover process.
 func (c *Client) SetVerbose(v bool) {
-	c.logger.SetDebug(v)
+	c.ensureLogger().SetDebug(v)
 }
 
 // SetVVerbose sets the client to be in the double verbose mode, which prints
 // information and packet in the discover process.
 func (c *Client) SetVVerbose(v bool) {
-	c.logger.SetInfo(v)
+	c.ensureLogger().SetInfo(v)
 }
 
 // SetServerHost allows user to set the STUN hostname and port.
@@ -104,6 +114,7 @@ func (c *Client) SetRFC3489Compatibility(enabled bool) {
 // If Binding succeeds but the server cannot classify NAT behavior, Discover
 // returns NATUnknown together with the mapped host and a nil error.
 func (c *Client) Discover() (NATType, *Host, error) {
+	c.ensureLogger()
 	if c.serverAddr == "" {
 		c.SetServerAddr(DefaultServerAddr)
 	}
@@ -137,6 +148,7 @@ func (c *Client) Discover() (NATType, *Host, error) {
 // with the error. Servers without a usable alternate address return
 // ErrBehaviorDiscoveryUnsupported.
 func (c *Client) BehaviorTest() (*NATBehavior, error) {
+	c.ensureLogger()
 	if c.serverAddr == "" {
 		c.SetServerAddr(DefaultServerAddr)
 	}
@@ -167,6 +179,7 @@ func (c *Client) BehaviorTest() (*NATBehavior, error) {
 // Keepalive sends and receives a bind request, which ensures the mapping stays open
 // Only applicable when client was created with a connection.
 func (c *Client) Keepalive() (*Host, error) {
+	c.ensureLogger()
 	if c.conn == nil {
 		return nil, errors.New("no connection available")
 	}

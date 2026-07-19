@@ -17,10 +17,50 @@ package stun
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"testing"
 )
+
+func mustAttribute(t testing.TB, a *attribute, err error) *attribute {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+func mustNewAttribute(t testing.TB, types uint16, value []byte) *attribute {
+	t.Helper()
+	a, err := newAttribute(types, value)
+	return mustAttribute(t, a, err)
+}
+
+func mustSoftwareAttribute(t testing.TB, name string) *attribute {
+	t.Helper()
+	a, err := newSoftwareAttribute(name)
+	return mustAttribute(t, a, err)
+}
+
+func mustChangeReqAttribute(t testing.TB, changeIP, changePort bool) *attribute {
+	t.Helper()
+	a, err := newChangeReqAttribute(changeIP, changePort)
+	return mustAttribute(t, a, err)
+}
+
+func mustFingerprintAttribute(t testing.TB, p *packet) *attribute {
+	t.Helper()
+	a, err := newFingerprintAttribute(p)
+	return mustAttribute(t, a, err)
+}
+
+func mustAddAttribute(t testing.TB, p *packet, a *attribute) {
+	t.Helper()
+	if err := p.addAttribute(*a); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestNewAttributeLengthBoundaries(t *testing.T) {
 	tests := []struct {
@@ -37,7 +77,7 @@ func TestNewAttributeLengthBoundaries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			value := bytes.Repeat([]byte{0xa5}, tt.length)
-			a := newAttribute(attributeSoftware, value)
+			a := mustNewAttribute(t, attributeSoftware, value)
 			if int(a.length) != tt.length {
 				t.Fatalf("length = %d, want %d", a.length, tt.length)
 			}
@@ -65,13 +105,10 @@ func TestNewAttributeRejectsValuesTooLargeForSTUNMessage(t *testing.T) {
 		1<<16 + 1,
 	} {
 		t.Run(fmt.Sprintf("length_%d", length), func(t *testing.T) {
-			defer func() {
-				got := recover()
-				if got != "stun: attribute value exceeds maximum STUN message size" {
-					t.Fatalf("panic = %#v, want oversized-attribute error", got)
-				}
-			}()
-			newAttribute(attributeSoftware, make([]byte, length))
+			a, err := newAttribute(attributeSoftware, make([]byte, length))
+			if a != nil || !errors.Is(err, errAttributeTooLarge) {
+				t.Fatalf("newAttribute() = (%#v, %v), want (nil, %v)", a, err, errAttributeTooLarge)
+			}
 		})
 	}
 }
@@ -81,7 +118,8 @@ func TestAddAttributeRejectsPacketLengthOverflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.addAttribute(*newAttribute(attributeSoftware, make([]byte, maxAttributeValueLength)))
+	mustAddAttribute(t, p,
+		mustNewAttribute(t, attributeSoftware, make([]byte, maxAttributeValueLength)))
 	if p.length != 65532 || len(p.attributes) != 1 {
 		t.Fatalf("maximum packet body: length=%d attributes=%d", p.length, len(p.attributes))
 	}
@@ -99,18 +137,23 @@ func TestAddAttributeRejectsPacketLengthOverflow(t *testing.T) {
 			len(parsed.attributes), len(parsed.attributes[0].value))
 	}
 
-	func() {
-		defer func() {
-			got := recover()
-			if got != "stun: packet attributes exceed maximum STUN message size" {
-				t.Fatalf("panic = %#v, want packet-size error", got)
-			}
-		}()
-		p.addAttribute(*newAttribute(attributeSoftware, nil))
-	}()
-
-	if p.length != 65532 || len(p.attributes) != 1 {
+	before := append([]byte(nil), p.bytes()...)
+	empty := mustNewAttribute(t, attributeSoftware, nil)
+	if err := p.addAttribute(*empty); !errors.Is(err, errPacketTooLarge) {
+		t.Fatalf("addAttribute() error = %v, want %v", err, errPacketTooLarge)
+	}
+	if p.length != 65532 || len(p.attributes) != 1 || !bytes.Equal(p.bytes(), before) {
 		t.Fatalf("failed add mutated packet: length=%d attributes=%d", p.length, len(p.attributes))
+	}
+
+	fingerprint, err := newFingerprintAttribute(p)
+	if fingerprint != nil || !errors.Is(err, errPacketTooLarge) {
+		t.Fatalf("newFingerprintAttribute() = (%#v, %v), want (nil, %v)",
+			fingerprint, err, errPacketTooLarge)
+	}
+	if p.length != 65532 || len(p.attributes) != 1 || !bytes.Equal(p.bytes(), before) {
+		t.Fatalf("failed fingerprint construction mutated packet: length=%d attributes=%d",
+			p.length, len(p.attributes))
 	}
 }
 
@@ -143,7 +186,7 @@ func TestChangeRequestAttribute(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := newChangeReqAttribute(tt.changeIP, tt.changePort)
+			a := mustChangeReqAttribute(t, tt.changeIP, tt.changePort)
 			if a.types != attributeChangeRequest || a.length != 4 {
 				t.Fatalf("unexpected header: type=%#x length=%d", a.types, a.length)
 			}
@@ -170,7 +213,7 @@ func TestRawAddress(t *testing.T) {
 			value[1] = tt.family
 			binary.BigEndian.PutUint16(value[2:4], tt.port)
 			copy(value[4:], tt.ip)
-			h := newAttribute(attributeMappedAddress, value).rawAddr()
+			h := mustNewAttribute(t, attributeMappedAddress, value).rawAddr()
 			if h == nil || h.Family() != uint16(tt.family) || h.Port() != tt.port || !net.ParseIP(h.IP()).Equal(tt.ip) {
 				t.Fatalf("decoded host = %#v", h)
 			}
@@ -197,7 +240,7 @@ func TestXorAddress(t *testing.T) {
 			for i := range tt.ip {
 				value[4+i] = tt.ip[i] ^ transaction[i]
 			}
-			h := newAttribute(attributeXorMappedAddress, value).xorAddr(transaction)
+			h := mustNewAttribute(t, attributeXorMappedAddress, value).xorAddr(transaction)
 			if h == nil || h.Port() != tt.port || !net.ParseIP(h.IP()).Equal(tt.ip) {
 				t.Fatalf("decoded host = %#v", h)
 			}
@@ -209,21 +252,21 @@ func TestAddressAttributesRejectMalformedValues(t *testing.T) {
 	transaction := make([]byte, 16)
 	for _, length := range []int{0, 1, 3, 7, 9, 19, 21} {
 		value := make([]byte, length)
-		if newAttribute(attributeMappedAddress, value).rawAddr() != nil {
+		if mustNewAttribute(t, attributeMappedAddress, value).rawAddr() != nil {
 			t.Fatalf("raw address accepted length %d", length)
 		}
-		if newAttribute(attributeXorMappedAddress, value).xorAddr(transaction) != nil {
+		if mustNewAttribute(t, attributeXorMappedAddress, value).xorAddr(transaction) != nil {
 			t.Fatalf("XOR address accepted length %d", length)
 		}
 	}
 	for _, family := range []byte{0, 3, 255} {
 		value := make([]byte, 8)
 		value[1] = family
-		if newAttribute(attributeMappedAddress, value).rawAddr() != nil {
+		if mustNewAttribute(t, attributeMappedAddress, value).rawAddr() != nil {
 			t.Fatalf("raw address accepted family %d", family)
 		}
 	}
-	if newAttribute(attributeXorMappedAddress, make([]byte, 8)).xorAddr(make([]byte, 15)) != nil {
+	if mustNewAttribute(t, attributeXorMappedAddress, make([]byte, 8)).xorAddr(make([]byte, 15)) != nil {
 		t.Fatal("XOR address accepted a short transaction ID")
 	}
 }

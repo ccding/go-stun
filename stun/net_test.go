@@ -40,6 +40,15 @@ type scriptedPacketConn struct {
 	short    bool
 }
 
+type invalidReadLengthPacketConn struct {
+	scriptedPacketConn
+	length int
+}
+
+func (c *invalidReadLengthPacketConn) ReadFrom([]byte) (int, net.Addr, error) {
+	return c.length, &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}, nil
+}
+
 func (c *scriptedPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
 	if len(c.reads) == 0 {
 		return 0, nil, timeoutError{}
@@ -102,15 +111,31 @@ func (c *bindingResponseConn) ReadFrom(dst []byte) (int, net.Addr, error) {
 		if mappedPort == 0 {
 			mappedPort = 40000
 		}
-		response.addAttribute(*mappedAddressAttribute(mappedIP, mappedPort))
+		mapped, err := newMappedAddressAttribute(mappedIP, mappedPort)
+		if err != nil {
+			return 0, nil, err
+		}
+		if err := response.addAttribute(*mapped); err != nil {
+			return 0, nil, err
+		}
 	}
 	if c.legacy {
-		source := mappedAddressAttribute(net.ParseIP("198.51.100.1"), 3478)
+		source, err := newMappedAddressAttribute(net.ParseIP("198.51.100.1"), 3478)
+		if err != nil {
+			return 0, nil, err
+		}
 		source.types = attributeSourceAddress
-		response.addAttribute(*source)
-		changed := mappedAddressAttribute(net.ParseIP("203.0.113.2"), 3479)
+		if err := response.addAttribute(*source); err != nil {
+			return 0, nil, err
+		}
+		changed, err := newMappedAddressAttribute(net.ParseIP("203.0.113.2"), 3479)
+		if err != nil {
+			return 0, nil, err
+		}
 		changed.types = attributeChangedAddress
-		response.addAttribute(*changed)
+		if err := response.addAttribute(*changed); err != nil {
+			return 0, nil, err
+		}
 	}
 	wire := response.bytes()
 	c.responded = true
@@ -126,27 +151,37 @@ func bindingPacket(messageType uint16, transactionID []byte) *packet {
 	return p
 }
 
-func mappedAddressAttribute(ip net.IP, port uint16) *attribute {
+func newMappedAddressAttribute(ip net.IP, port uint16) (*attribute, error) {
 	ip = ip.To4()
 	value := []byte{0, attributeFamilyIPv4, byte(port >> 8), byte(port)}
 	value = append(value, ip...)
 	return newAttribute(attributeMappedAddress, value)
 }
 
-func xorMappedAddressAttribute(types uint16, transactionID []byte, ip net.IP, port uint16) *attribute {
+func mappedAddressAttribute(t testing.TB, ip net.IP, port uint16) *attribute {
+	t.Helper()
+	a, err := newMappedAddressAttribute(ip, port)
+	return mustAttribute(t, a, err)
+}
+
+func xorMappedAddressAttribute(t testing.TB, types uint16, transactionID []byte, ip net.IP, port uint16) *attribute {
+	t.Helper()
 	ip = ip.To4()
 	xorPort := port ^ binary.BigEndian.Uint16(transactionID[:2])
 	value := []byte{0, attributeFamilyIPv4, byte(xorPort >> 8), byte(xorPort)}
 	for i := range ip {
 		value = append(value, ip[i]^transactionID[i])
 	}
-	return newAttribute(types, value)
+	a, err := newAttribute(types, value)
+	return mustAttribute(t, a, err)
 }
 
-func errorCodeAttribute(code int, reason string) *attribute {
+func errorCodeAttribute(t testing.TB, code int, reason string) *attribute {
+	t.Helper()
 	value := []byte{0, 0, byte(code / 100), byte(code % 100)}
 	value = append(value, []byte(reason)...)
-	return newAttribute(attributeErrorCode, value)
+	a, err := newAttribute(attributeErrorCode, value)
+	return mustAttribute(t, a, err)
 }
 
 func TestSendDiscardsMalformedAndUnrelatedPackets(t *testing.T) {
@@ -160,7 +195,7 @@ func TestSendDiscardsMalformedAndUnrelatedPackets(t *testing.T) {
 	mismatch.transID[len(mismatch.transID)-1] ^= 1
 	wrongClass := bindingPacket(typeBindingRequest, request.transID)
 	valid := bindingPacket(typeBindingResponse, request.transID)
-	valid.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.10"), 54321))
+	mustAddAttribute(t, valid, mappedAddressAttribute(t, net.ParseIP("192.0.2.10"), 54321))
 	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 	conn := &scriptedPacketConn{
 		local: &net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 5000},
@@ -292,6 +327,37 @@ func TestSendReturnsNonTimeoutReadError(t *testing.T) {
 	}
 }
 
+func TestSendRejectsInvalidPacketConnReadLengths(t *testing.T) {
+	request, err := newPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.types = typeBindingRequest
+	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
+
+	for _, tt := range []struct {
+		name   string
+		length int
+	}{
+		{name: "negative", length: -1},
+		{name: "larger than receive buffer", length: maxPacketSize + 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			conn := &invalidReadLengthPacketConn{length: tt.length}
+			resp, err := NewClient().send(request, conn, server)
+			if resp != nil {
+				t.Fatalf("send returned response %#v", resp)
+			}
+			if err == nil || err.Error() != "invalid packet length returned by connection" {
+				t.Fatalf("send error = %v, want invalid packet length", err)
+			}
+			if len(conn.writes) != 1 {
+				t.Fatalf("writes = %d, want 1", len(conn.writes))
+			}
+		})
+	}
+}
+
 func TestRFC3489BindingInteroperability(t *testing.T) {
 	client := NewClient()
 	client.SetSoftwareName("not sent on the wire")
@@ -371,10 +437,10 @@ func TestSendReturnsBindingErrors(t *testing.T) {
 			}
 			request.types = typeBindingRequest
 			response := bindingPacket(typeBindingErrorResponse, request.transID)
-			response.addAttribute(*errorCodeAttribute(code, "failure"))
+			mustAddAttribute(t, response, errorCodeAttribute(t, code, "failure"))
 			// An error response must never become a success, even if a broken
 			// server also includes a mapped address.
-			response.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.20"), 40000))
+			mustAddAttribute(t, response, mappedAddressAttribute(t, net.ParseIP("192.0.2.20"), 40000))
 			server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 			conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
 			resp, err := NewClient().send(request, conn, server)
@@ -395,9 +461,9 @@ func TestSendRejectsMalformedBindingErrors(t *testing.T) {
 		attr *attribute
 	}{
 		{name: "missing"},
-		{name: "short", attr: newAttribute(attributeErrorCode, []byte{0, 0, 4})},
-		{name: "class", attr: errorCodeAttribute(200, "bad")},
-		{name: "number", attr: newAttribute(attributeErrorCode, []byte{0, 0, 4, 100})},
+		{name: "short", attr: mustNewAttribute(t, attributeErrorCode, []byte{0, 0, 4})},
+		{name: "class", attr: errorCodeAttribute(t, 200, "bad")},
+		{name: "number", attr: mustNewAttribute(t, attributeErrorCode, []byte{0, 0, 4, 100})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -407,7 +473,7 @@ func TestSendRejectsMalformedBindingErrors(t *testing.T) {
 			}
 			response := bindingPacket(typeBindingErrorResponse, request.transID)
 			if tt.attr != nil {
-				response.addAttribute(*tt.attr)
+				mustAddAttribute(t, response, tt.attr)
 			}
 			server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 			conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
@@ -444,7 +510,7 @@ func TestSendSanitizesBindingErrorReasons(t *testing.T) {
 			response := bindingPacket(typeBindingErrorResponse, request.transID)
 			value := []byte{0, 0, 4, 20}
 			value = append(value, tt.reason...)
-			response.addAttribute(*newAttribute(attributeErrorCode, value))
+			mustAddAttribute(t, response, mustNewAttribute(t, attributeErrorCode, value))
 			server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 			conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
 
@@ -485,8 +551,8 @@ func TestSendRejectsMalformedXorMappedAddressInsteadOfFallingBack(t *testing.T) 
 			}
 			request.types = typeBindingRequest
 			response := bindingPacket(typeBindingResponse, request.transID)
-			response.addAttribute(*newAttribute(tt.types, make([]byte, 7)))
-			response.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.20"), 40000))
+			mustAddAttribute(t, response, mustNewAttribute(t, tt.types, make([]byte, 7)))
+			mustAddAttribute(t, response, mappedAddressAttribute(t, net.ParseIP("192.0.2.20"), 40000))
 			server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 			conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
 
@@ -503,8 +569,8 @@ func TestSendRejectsMalformedXorMappedAddressInsteadOfFallingBack(t *testing.T) 
 
 func TestNewResponseDoesNotFallbackFromMalformedXorMappedAddress(t *testing.T) {
 	pkt := bindingPacket(typeBindingResponse, make([]byte, 16))
-	pkt.addAttribute(*newAttribute(attributeXorMappedAddress, make([]byte, 7)))
-	pkt.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.20"), 40000))
+	mustAddAttribute(t, pkt, mustNewAttribute(t, attributeXorMappedAddress, make([]byte, 7)))
+	mustAddAttribute(t, pkt, mappedAddressAttribute(t, net.ParseIP("192.0.2.20"), 40000))
 	resp := newResponse(pkt, &scriptedPacketConn{})
 	if resp.mappedAddr != nil {
 		t.Fatalf("newResponse fell back to MAPPED-ADDRESS: %#v", resp.mappedAddr)
@@ -524,14 +590,14 @@ func TestSendIgnoresMalformedExperimentalXorWhenStandardIsValid(t *testing.T) {
 			}
 			request.types = typeBindingRequest
 			response := bindingPacket(typeBindingResponse, request.transID)
-			standard := xorMappedAddressAttribute(attributeXorMappedAddress, request.transID, net.ParseIP("192.0.2.20"), 40000)
-			experimental := newAttribute(attributeXorMappedAddressExp, make([]byte, 7))
+			standard := xorMappedAddressAttribute(t, attributeXorMappedAddress, request.transID, net.ParseIP("192.0.2.20"), 40000)
+			experimental := mustNewAttribute(t, attributeXorMappedAddressExp, make([]byte, 7))
 			if experimentalFirst {
-				response.addAttribute(*experimental)
-				response.addAttribute(*standard)
+				mustAddAttribute(t, response, experimental)
+				mustAddAttribute(t, response, standard)
 			} else {
-				response.addAttribute(*standard)
-				response.addAttribute(*experimental)
+				mustAddAttribute(t, response, standard)
+				mustAddAttribute(t, response, experimental)
 			}
 			server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 			conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
@@ -551,8 +617,8 @@ func TestSendReturnsServerErrorDespiteMalformedXorMappedAddress(t *testing.T) {
 	}
 	request.types = typeBindingRequest
 	response := bindingPacket(typeBindingErrorResponse, request.transID)
-	response.addAttribute(*newAttribute(attributeXorMappedAddress, make([]byte, 7)))
-	response.addAttribute(*errorCodeAttribute(500, "Server Error"))
+	mustAddAttribute(t, response, mustNewAttribute(t, attributeXorMappedAddress, make([]byte, 7)))
+	mustAddAttribute(t, response, errorCodeAttribute(t, 500, "Server Error"))
 	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 	conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
 
@@ -569,8 +635,8 @@ func TestSendRejectsUnknownRequiredResponseAttribute(t *testing.T) {
 		t.Fatal(err)
 	}
 	response := bindingPacket(typeBindingResponse, request.transID)
-	response.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.20"), 40000))
-	response.addAttribute(*newAttribute(0x1234, nil))
+	mustAddAttribute(t, response, mappedAddressAttribute(t, net.ParseIP("192.0.2.20"), 40000))
+	mustAddAttribute(t, response, mustNewAttribute(t, 0x1234, nil))
 	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 	conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
 	if resp, err := NewClient().send(request, conn, server); err == nil || resp != nil {
@@ -585,9 +651,9 @@ func TestResponseIgnoresAttributesAfterMessageIntegrity(t *testing.T) {
 			t.Fatal(err)
 		}
 		response := bindingPacket(typeBindingResponse, request.transID)
-		response.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.20"), 40000))
-		response.addAttribute(*newAttribute(attributeMessageIntegrity, make([]byte, 20)))
-		response.addAttribute(*newAttribute(0x1234, nil))
+		mustAddAttribute(t, response, mappedAddressAttribute(t, net.ParseIP("192.0.2.20"), 40000))
+		mustAddAttribute(t, response, mustNewAttribute(t, attributeMessageIntegrity, make([]byte, 20)))
+		mustAddAttribute(t, response, mustNewAttribute(t, 0x1234, nil))
 		server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 		conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
 		resp, err := NewClient().send(request, conn, server)
@@ -602,8 +668,8 @@ func TestResponseIgnoresAttributesAfterMessageIntegrity(t *testing.T) {
 			t.Fatal(err)
 		}
 		response := bindingPacket(typeBindingResponse, request.transID)
-		response.addAttribute(*newAttribute(attributeMessageIntegrity, make([]byte, 20)))
-		response.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.20"), 40000))
+		mustAddAttribute(t, response, mustNewAttribute(t, attributeMessageIntegrity, make([]byte, 20)))
+		mustAddAttribute(t, response, mappedAddressAttribute(t, net.ParseIP("192.0.2.20"), 40000))
 		server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 		conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
 		if resp, err := NewClient().send(request, conn, server); err == nil || resp != nil {

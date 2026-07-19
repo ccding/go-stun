@@ -52,6 +52,54 @@ func TestUtilityCoverageClientConfiguration(t *testing.T) {
 	}
 }
 
+func TestZeroValueClientInitializesLogger(t *testing.T) {
+	client := &Client{}
+	client.SetVerbose(true)
+	if client.logger == nil || !client.logger.debug {
+		t.Fatalf("SetVerbose did not initialize the logger: %#v", client.logger)
+	}
+
+	client.logger = nil
+	client.SetVVerbose(true)
+	if client.logger == nil || !client.logger.info {
+		t.Fatalf("SetVVerbose did not initialize the logger: %#v", client.logger)
+	}
+
+	for _, test := range []struct {
+		name string
+		call func(*Client)
+	}{
+		{
+			name: "Discover",
+			call: func(c *Client) {
+				c.SetServerAddr("bad:addr:3478")
+				_, _, _ = c.Discover()
+			},
+		},
+		{
+			name: "BehaviorTest",
+			call: func(c *Client) {
+				c.SetServerAddr("bad:addr:3478")
+				_, _ = c.BehaviorTest()
+			},
+		},
+		{
+			name: "Keepalive",
+			call: func(c *Client) {
+				_, _ = c.Keepalive()
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &Client{}
+			test.call(client)
+			if client.logger == nil {
+				t.Fatal("public operation did not initialize the logger")
+			}
+		})
+	}
+}
+
 func TestUtilityCoverageResolveLocalAddrDefaultsToNil(t *testing.T) {
 	addr, err := NewClient().resolveLocalAddr()
 	if err != nil || addr != nil {
@@ -90,6 +138,39 @@ func TestUtilityCoverageLoggerLevels(t *testing.T) {
 			t.Fatalf("logger output %q does not contain %q", output.String(), want)
 		}
 	}
+}
+
+func TestZeroValueLoggerIsSafe(t *testing.T) {
+	var logger Logger
+	logger.SetDebug(true)
+	logger.Debug("zero-value logger")
+	if logger.Writer() == nil {
+		t.Fatal("zero-value logger did not install an output writer")
+	}
+
+	var output bytes.Buffer
+	logger.SetOutput(&output)
+	logger.SetInfo(true)
+	logger.Debugf("debug-%s", "format")
+	logger.Debugln("debug-line")
+	logger.Info("info")
+	logger.Infof("info-%s", "format")
+	logger.Infoln("info-line")
+	for _, want := range []string{"debug-format", "debug-line", "info", "info-format", "info-line"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("logger output %q does not contain %q", output.String(), want)
+		}
+	}
+
+	var nilLogger *Logger
+	nilLogger.SetDebug(true)
+	nilLogger.SetInfo(true)
+	nilLogger.Debug("ignored")
+	nilLogger.Debugf("ignored")
+	nilLogger.Debugln("ignored")
+	nilLogger.Info("ignored")
+	nilLogger.Infof("ignored")
+	nilLogger.Infoln("ignored")
 }
 
 func TestUtilityCoverageStringMethods(t *testing.T) {

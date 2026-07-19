@@ -110,7 +110,10 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 				return nil, errors.New("fingerprint check failed")
 			}
 		}
-		attribute := newAttribute(types, value)
+		attribute, err := newAttribute(types, value)
+		if err != nil {
+			return nil, errors.New("received data format mismatch")
+		}
 		attribute.padding = append(attribute.padding[:0], attributes[end:paddedEnd]...)
 		// The header already contains the complete message length. Appending a
 		// parsed attribute must not add its size to that length a second time.
@@ -120,13 +123,14 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 	return pkt, nil
 }
 
-func (v *packet) addAttribute(a attribute) {
+func (v *packet) addAttribute(a attribute) error {
 	newLength := int(v.length) + 4 + align(int(a.length))
 	if newLength > math.MaxUint16 {
-		panic("stun: packet attributes exceed maximum STUN message size")
+		return errPacketTooLarge
 	}
 	v.attributes = append(v.attributes, a)
 	v.length = uint16(newLength)
+	return nil
 }
 
 func (v *packet) bytes() []byte {

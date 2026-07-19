@@ -16,7 +16,9 @@ package stun
 
 import (
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
+	"math"
 	"net"
 )
 
@@ -32,22 +34,28 @@ type attribute struct {
 // leave four of those bytes for its type and length fields.
 const maxAttributeValueLength = 1<<16 - 8
 
-// newAttribute copies value into a wire-representable STUN attribute. It
-// panics if value cannot fit in a STUN message; callers only pass locally
-// constructed or already frame-validated values.
-func newAttribute(types uint16, value []byte) *attribute {
+var (
+	errAttributeTooLarge = errors.New("stun: attribute value exceeds maximum STUN message size")
+	errPacketTooLarge    = errors.New("stun: packet attributes exceed maximum STUN message size")
+)
+
+// newAttribute copies value into a wire-representable STUN attribute.
+func newAttribute(types uint16, value []byte) (*attribute, error) {
 	if len(value) > maxAttributeValueLength {
-		panic("stun: attribute value exceeds maximum STUN message size")
+		return nil, errAttributeTooLarge
 	}
 	att := new(attribute)
 	att.types = types
 	att.value = append([]byte(nil), value...)
 	att.length = uint16(len(value))
 	att.padding = make([]byte, align(len(value))-len(value))
-	return att
+	return att, nil
 }
 
-func newFingerprintAttribute(packet *packet) *attribute {
+func newFingerprintAttribute(packet *packet) (*attribute, error) {
+	if int(packet.length)+8 > math.MaxUint16 {
+		return nil, errPacketTooLarge
+	}
 	packetBytes := packet.bytes()
 	binary.BigEndian.PutUint16(packetBytes[2:4], packet.length+8)
 	crc := crc32.ChecksumIEEE(packetBytes) ^ fingerprint
@@ -56,11 +64,11 @@ func newFingerprintAttribute(packet *packet) *attribute {
 	return newAttribute(attributeFingerprint, buf)
 }
 
-func newSoftwareAttribute(name string) *attribute {
+func newSoftwareAttribute(name string) (*attribute, error) {
 	return newAttribute(attributeSoftware, []byte(name))
 }
 
-func newChangeReqAttribute(changeIP bool, changePort bool) *attribute {
+func newChangeReqAttribute(changeIP bool, changePort bool) (*attribute, error) {
 	value := make([]byte, 4)
 	if changeIP {
 		value[3] |= 0x04

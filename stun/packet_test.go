@@ -51,9 +51,9 @@ func TestPacketAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.addAttribute(*newChangeReqAttribute(true, true))
-	p.addAttribute(*newSoftwareAttribute("aaa"))
-	p.addAttribute(*newFingerprintAttribute(p))
+	mustAddAttribute(t, p, mustChangeReqAttribute(t, true, true))
+	mustAddAttribute(t, p, mustSoftwareAttribute(t, "aaa"))
+	mustAddAttribute(t, p, mustFingerprintAttribute(t, p))
 	pkt, err := newPacketFromBytes(p.bytes())
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func TestAttributeLengthExcludesPadding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.addAttribute(*newSoftwareAttribute("abc"))
+	mustAddAttribute(t, p, mustSoftwareAttribute(t, "abc"))
 	wire := p.bytes()
 	if got := binary.BigEndian.Uint16(wire[22:24]); got != 3 {
 		t.Fatalf("attribute length = %d, want 3", got)
@@ -117,7 +117,7 @@ func TestPacketRejectsInvalidFingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.addAttribute(*newFingerprintAttribute(p))
+	mustAddAttribute(t, p, mustFingerprintAttribute(t, p))
 	wire := p.bytes()
 	wire[len(wire)-1] ^= 1
 	if _, err := newPacketFromBytes(wire); err == nil {
@@ -158,7 +158,7 @@ func TestRFC5769SampleRequest(t *testing.T) {
 
 	p.attributes = p.attributes[:len(p.attributes)-1]
 	p.length -= 8
-	generated := newFingerprintAttribute(p)
+	generated := mustFingerprintAttribute(t, p)
 	if !bytes.Equal(generated.value, wire[len(wire)-4:]) {
 		t.Fatalf("generated fingerprint = %x, want %x", generated.value, wire[len(wire)-4:])
 	}
@@ -228,7 +228,7 @@ func TestExperimentalXorMappedAddressCompatibility(t *testing.T) {
 	p := &packet{
 		transID: transactionID,
 		attributes: []attribute{
-			*newAttribute(attributeXorMappedAddressExp, value),
+			*mustNewAttribute(t, attributeXorMappedAddressExp, value),
 		},
 	}
 
@@ -261,7 +261,7 @@ func TestPacketPaddingLengths(t *testing.T) {
 				t.Fatal(err)
 			}
 			value := bytes.Repeat([]byte{0xa5}, length)
-			p.addAttribute(*newAttribute(attributeSoftware, value))
+			mustAddAttribute(t, p, mustNewAttribute(t, attributeSoftware, value))
 			wire := p.bytes()
 			wantBody := 4 + align(length)
 			if len(wire) != 20+wantBody || int(p.length) != wantBody {
@@ -295,8 +295,8 @@ func TestPacketRejectsMalformedAttributes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.addAttribute(*newFingerprintAttribute(p))
-	p.addAttribute(*newSoftwareAttribute("after fingerprint"))
+	mustAddAttribute(t, p, mustFingerprintAttribute(t, p))
+	mustAddAttribute(t, p, mustSoftwareAttribute(t, "after fingerprint"))
 	if _, err := newPacketFromBytes(p.bytes()); err == nil {
 		t.Fatal("accepted FINGERPRINT that was not the final attribute")
 	}
@@ -307,7 +307,7 @@ func TestPacketOwnsParsedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.addAttribute(*newSoftwareAttribute("client"))
+	mustAddAttribute(t, p, mustSoftwareAttribute(t, "client"))
 	wire := p.bytes()
 	parsed, err := newPacketFromBytes(wire)
 	if err != nil {
@@ -326,10 +326,10 @@ func TestPacketPreservesNonzeroPadding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newSoftwareAttribute("x")
+	a := mustSoftwareAttribute(t, "x")
 	a.padding = []byte{0xaa, 0xbb, 0xcc}
-	p.addAttribute(*a)
-	p.addAttribute(*newFingerprintAttribute(p))
+	mustAddAttribute(t, p, a)
+	mustAddAttribute(t, p, mustFingerprintAttribute(t, p))
 	wire := p.bytes()
 
 	parsed, err := newPacketFromBytes(wire)
@@ -380,14 +380,14 @@ func TestPacketParserRandomInputs(t *testing.T) {
 			if _, err := random.Read(value); err != nil {
 				t.Fatal(err)
 			}
-			a := newAttribute(types, value)
+			a := mustNewAttribute(t, types, value)
 			if _, err := random.Read(a.padding); err != nil {
 				t.Fatal(err)
 			}
-			p.addAttribute(*a)
+			mustAddAttribute(t, p, a)
 		}
 		if random.Intn(2) == 0 {
-			p.addAttribute(*newFingerprintAttribute(p))
+			mustAddAttribute(t, p, mustFingerprintAttribute(t, p))
 		}
 
 		wire := p.bytes()

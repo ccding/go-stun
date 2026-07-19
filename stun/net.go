@@ -41,14 +41,31 @@ func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, changeIP boo
 		if !utf8.ValidString(c.softwareName) || utf8.RuneCountInString(c.softwareName) >= 128 {
 			return nil, errors.New("software name must be valid UTF-8 and shorter than 128 characters")
 		}
-		pkt.addAttribute(*newSoftwareAttribute(c.softwareName))
+		attribute, err := newSoftwareAttribute(c.softwareName)
+		if err != nil {
+			return nil, err
+		}
+		if err := pkt.addAttribute(*attribute); err != nil {
+			return nil, err
+		}
 	}
 	if changeIP || changePort {
-		attribute := newChangeReqAttribute(changeIP, changePort)
-		pkt.addAttribute(*attribute)
+		attribute, err := newChangeReqAttribute(changeIP, changePort)
+		if err != nil {
+			return nil, err
+		}
+		if err := pkt.addAttribute(*attribute); err != nil {
+			return nil, err
+		}
 	}
 	if !c.rfc3489Mode {
-		pkt.addAttribute(*newFingerprintAttribute(pkt))
+		attribute, err := newFingerprintAttribute(pkt)
+		if err != nil {
+			return nil, err
+		}
+		if err := pkt.addAttribute(*attribute); err != nil {
+			return nil, err
+		}
 	}
 	// Send packet.
 	return c.send(pkt, conn, addr)
@@ -87,6 +104,9 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 					break
 				}
 				return nil, err
+			}
+			if length < 0 || length > len(packetBytes) {
+				return nil, errors.New("invalid packet length returned by connection")
 			}
 			p, err := newPacketFromBytes(packetBytes[0:length])
 			if err != nil {

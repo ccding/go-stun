@@ -165,7 +165,13 @@ func (c *behaviorPacketConn) WriteTo(wire []byte, destination net.Addr) (int, er
 		mappedPort = uint16(c.local.Port)
 	}
 	if c.omitMappedAt != probeNumber {
-		response.addAttribute(*mappedAddressAttribute(mappedIP, mappedPort))
+		mapped, err := newMappedAddressAttribute(mappedIP, mappedPort)
+		if err != nil {
+			return 0, err
+		}
+		if err := response.addAttribute(*mapped); err != nil {
+			return 0, err
+		}
 	}
 	if probeNumber == 1 && !c.omitOtherAddress {
 		otherIP := net.ParseIP("203.0.113.2")
@@ -176,9 +182,14 @@ func (c *behaviorPacketConn) WriteTo(wire []byte, destination net.Addr) (int, er
 		if c.alternateSamePort {
 			otherPort = 3478
 		}
-		other := mappedAddressAttribute(otherIP, otherPort)
+		other, err := newMappedAddressAttribute(otherIP, otherPort)
+		if err != nil {
+			return 0, err
+		}
 		other.types = attributeOtherAddress
-		response.addAttribute(*other)
+		if err := response.addAttribute(*other); err != nil {
+			return 0, err
+		}
 	}
 	c.pending = append(c.pending, packetRead{data: response.bytes(), addr: responseAddr})
 	return len(wire), nil
