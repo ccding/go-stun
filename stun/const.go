@@ -31,10 +31,12 @@ type NATType int
 // BehaviorType is NAT behavior type.
 type BehaviorType int
 
-// NATBehavior is NAT behavior type of MappingType and FilteringType.
+// NATBehavior describes NAT mapping and filtering behavior. NoTranslation is
+// true when the mapped transport address matches the client's local address.
 type NATBehavior struct {
 	MappingType   BehaviorType
 	FilteringType BehaviorType
+	NoTranslation bool
 }
 
 // NAT types.
@@ -88,10 +90,10 @@ func init() {
 
 	// Defined in RFC 3489
 	natNormalTypeStr = map[NATBehavior]string{
-		{BehaviorTypeEndpoint, BehaviorTypeEndpoint}:       "Full cone NAT",
-		{BehaviorTypeEndpoint, BehaviorTypeAddr}:           "Restricted cone NAT",
-		{BehaviorTypeEndpoint, BehaviorTypeAddrAndPort}:    "Port Restricted cone NAT",
-		{BehaviorTypeAddrAndPort, BehaviorTypeAddrAndPort}: "Symmetric NAT",
+		{MappingType: BehaviorTypeEndpoint, FilteringType: BehaviorTypeEndpoint}:       "Full cone NAT",
+		{MappingType: BehaviorTypeEndpoint, FilteringType: BehaviorTypeAddr}:           "Restricted cone NAT",
+		{MappingType: BehaviorTypeEndpoint, FilteringType: BehaviorTypeAddrAndPort}:    "Port Restricted cone NAT",
+		{MappingType: BehaviorTypeAddrAndPort, FilteringType: BehaviorTypeAddrAndPort}: "Symmetric NAT",
 	}
 }
 
@@ -111,6 +113,9 @@ func (natBhType BehaviorType) String() string {
 
 // NormalType returns the normal NAT type of the NatBehavior.
 func (natBehavior NATBehavior) NormalType() string {
+	if natBehavior.NoTranslation {
+		return "Open Internet (no NAT)"
+	}
 	if s, ok := natNormalTypeStr[natBehavior]; ok {
 		return s
 	}

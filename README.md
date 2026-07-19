@@ -40,14 +40,16 @@ verbose mode.
 Most public STUN servers, including Google's and Cloudflare's, support basic
 Binding requests but not the alternate-address tests needed to classify NAT
 behavior. With those servers the client returns `NATUnknown`, a non-nil mapped
-address, and a nil error. Full NAT classification requires a server that
-supports RFC 5780 behavior discovery.
+address, and a nil error. Full NAT classification requires a server with
+RFC 3489 classic NAT-discovery support or RFC 5780 behavior discovery.
 ```bash
 > ./go-stun --help
 Usage of ./go-stun:
   -b    Enable NAT behavior test mode
   -i string
         The ip on which to bind requests, set to empty will use default
+  -legacy
+        Enable compatibility with RFC 3489-only STUN servers
   -p int
         The port on which to bind requests, set to 0 to pick a random port
   -s string
@@ -68,5 +70,20 @@ func main() {
 	nat, host, err := stun.NewClient().Discover()
 }
 ```
+
+Modern Binding requests include SOFTWARE and FINGERPRINT attributes. For an
+RFC 3489-only server, enable compatibility mode before discovery. Compatibility
+mode is disabled by default, preserving the request format used by earlier
+go-stun releases:
+
+```go
+client := stun.NewClient()
+client.SetRFC3489Compatibility(true)
+nat, host, err := client.Discover()
+```
+
+UDP requests retain the RFC 3489 retransmission schedule used by the classic
+NAT-discovery algorithm: nine sends starting at 100 ms, doubling to a 1.6 s
+cap. This favors legacy behavior over RFC 5389's newer recommended defaults.
 
 More details please go to `main.go` and [GoDoc](http://godoc.org/github.com/ccding/go-stun/stun)

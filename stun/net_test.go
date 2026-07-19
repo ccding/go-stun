@@ -18,6 +18,7 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -192,11 +193,41 @@ func TestSendBindingRequestWireFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if request.types != typeBindingRequest || len(request.attributes) != 1 {
+	if request.types != typeBindingRequest || len(request.attributes) != 3 {
 		t.Fatalf("unexpected request: type=%#x attributes=%d", request.types, len(request.attributes))
 	}
-	if got := request.attributes[0]; got.types != attributeChangeRequest || len(got.value) != 4 || got.value[3] != 0x06 {
+	if got := request.attributes[0]; got.types != attributeSoftware || string(got.value) != "abc" {
+		t.Fatalf("unexpected SOFTWARE attribute: %#v", got)
+	}
+	if got := request.attributes[1]; got.types != attributeChangeRequest || len(got.value) != 4 || got.value[3] != 0x06 {
 		t.Fatalf("unexpected CHANGE-REQUEST attribute: %#v", got)
+	}
+	if got := request.attributes[2]; got.types != attributeFingerprint || len(got.value) != 4 {
+		t.Fatalf("unexpected FINGERPRINT attribute: %#v", got)
+	}
+}
+
+func TestSendBindingRequestValidatesSoftwareName(t *testing.T) {
+	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
+	tests := []struct {
+		name     string
+		software string
+	}{
+		{name: "invalid UTF-8", software: string([]byte{0xff})},
+		{name: "128 characters", software: strings.Repeat("x", 128)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewClient()
+			client.SetSoftwareName(tt.software)
+			conn := &scriptedPacketConn{}
+			if resp, err := client.sendBindingReq(conn, server, false, false); err == nil || resp != nil {
+				t.Fatalf("sendBindingReq() = %#v, %v", resp, err)
+			}
+			if len(conn.writes) != 0 {
+				t.Fatalf("invalid SOFTWARE value produced %d writes", len(conn.writes))
+			}
+		})
 	}
 }
 
@@ -239,6 +270,7 @@ func TestSendReportsWriteFailures(t *testing.T) {
 func TestRFC3489BindingInteroperability(t *testing.T) {
 	client := NewClient()
 	client.SetSoftwareName("not sent on the wire")
+	client.SetRFC3489Compatibility(true)
 	conn := &bindingResponseConn{
 		scriptedPacketConn: scriptedPacketConn{
 			local: &net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 5000},
@@ -263,6 +295,27 @@ func TestRFC3489BindingInteroperability(t *testing.T) {
 	if resp == nil || resp.mappedAddr.String() != "192.0.2.20:40000" ||
 		resp.changedAddr == nil || resp.changedAddr.String() != "203.0.113.2:3479" {
 		t.Fatalf("legacy response = %#v", resp)
+	}
+}
+
+func TestRFC3489CompatibilitySendsOnlyRequiredClassicAttributes(t *testing.T) {
+	client := NewClient()
+	client.SetSoftwareName(string([]byte{0xff})) // Omitted in compatibility mode.
+	client.SetRFC3489Compatibility(true)
+	conn := &bindingResponseConn{scriptedPacketConn: scriptedPacketConn{
+		local: &net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 5000},
+	}}
+	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
+	if _, err := client.sendBindingReq(conn, server, false, true); err != nil {
+		t.Fatal(err)
+	}
+	request, err := newPacketFromBytes(conn.writes[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(request.attributes) != 1 || request.attributes[0].types != attributeChangeRequest ||
+		len(request.attributes[0].value) != 4 || request.attributes[0].value[3] != 0x02 {
+		t.Fatalf("RFC 3489-compatible request attributes = %#v", request.attributes)
 	}
 }
 
@@ -303,8 +356,8 @@ func TestSendReturnsBindingErrors(t *testing.T) {
 			if resp != nil {
 				t.Fatalf("error response returned success: %#v", resp)
 			}
-			var stunErr *stunError
-			if !errors.As(err, &stunErr) || stunErr.Code != code || stunErr.Reason != "failure" {
+			var serverErr *ServerError
+			if !errors.As(err, &serverErr) || serverErr.Code != code || serverErr.Reason != "failure" {
 				t.Fatalf("error = %#v", err)
 			}
 		})
@@ -320,7 +373,6 @@ func TestSendRejectsMalformedBindingErrors(t *testing.T) {
 		{name: "short", attr: newAttribute(attributeErrorCode, []byte{0, 0, 4})},
 		{name: "class", attr: errorCodeAttribute(200, "bad")},
 		{name: "number", attr: newAttribute(attributeErrorCode, []byte{0, 0, 4, 100})},
-		{name: "utf8", attr: newAttribute(attributeErrorCode, []byte{0, 0, 4, 0, 0xff})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -334,10 +386,72 @@ func TestSendRejectsMalformedBindingErrors(t *testing.T) {
 			}
 			server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 			conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
-			if resp, err := NewClient().send(request, conn, server); err == nil || resp != nil {
+			resp, err := NewClient().send(request, conn, server)
+			if err == nil || resp != nil {
 				t.Fatalf("send returned response=%#v error=%v", resp, err)
 			}
+			var serverErr *ServerError
+			if errors.As(err, &serverErr) {
+				t.Fatalf("structurally invalid ERROR-CODE returned ServerError: %#v", serverErr)
+			}
 		})
+	}
+}
+
+func TestSendSanitizesBindingErrorReasons(t *testing.T) {
+	tests := []struct {
+		name   string
+		reason []byte
+		want   string
+	}{
+		{name: "RFC 3489 space padding", reason: []byte("Unknown Attribute   "), want: "Unknown Attribute"},
+		{name: "invalid UTF-8", reason: []byte{'b', 'a', 'd', 0xff, 'r', 'e', 'a', 's', 'o', 'n'}, want: "bad\uFFFDreason"},
+		{name: "truncate by rune", reason: []byte(strings.Repeat("界", 130)), want: strings.Repeat("界", 127)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request, err := newPacket()
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := bindingPacket(typeBindingErrorResponse, request.transID)
+			value := []byte{0, 0, 4, 20}
+			value = append(value, tt.reason...)
+			response.addAttribute(*newAttribute(attributeErrorCode, value))
+			server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
+			conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
+
+			resp, err := NewClient().send(request, conn, server)
+			if resp != nil {
+				t.Fatalf("error response returned success: %#v", resp)
+			}
+			var serverErr *ServerError
+			if !errors.As(err, &serverErr) {
+				t.Fatalf("error type = %T, want *ServerError: %v", err, err)
+			}
+			if serverErr.Code != 420 || serverErr.Reason != tt.want {
+				t.Fatalf("ServerError = %#v, want code 420 reason %q", serverErr, tt.want)
+			}
+		})
+	}
+}
+
+func TestSendRejectsMalformedXorMappedAddressInsteadOfFallingBack(t *testing.T) {
+	request, err := newPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.types = typeBindingRequest
+	response := bindingPacket(typeBindingResponse, request.transID)
+	response.addAttribute(*newAttribute(attributeXorMappedAddress, make([]byte, 7)))
+	response.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.20"), 40000))
+	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
+	conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
+
+	resp, err := NewClient().send(request, conn, server)
+	if err == nil || resp != nil {
+		t.Fatalf("send returned response=%#v error=%v", resp, err)
 	}
 }
 

@@ -202,7 +202,10 @@ func TestRFC5769XorMappedResponses(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			h := p.getXorMappedAddr()
+			h, present := p.getXorMappedAddr()
+			if !present {
+				t.Fatal("XOR-MAPPED-ADDRESS was not found")
+			}
 			if h == nil || !net.ParseIP(h.IP()).Equal(net.ParseIP(tt.ip)) || h.Port() != tt.port {
 				t.Fatalf("XOR-MAPPED-ADDRESS = %#v, want %s:%d", h, tt.ip, tt.port)
 			}
@@ -210,6 +213,43 @@ func TestRFC5769XorMappedResponses(t *testing.T) {
 				t.Fatalf("response did not round trip\ngot  %x\nwant %x", got, wire)
 			}
 		})
+	}
+}
+
+func TestExperimentalXorMappedAddressCompatibility(t *testing.T) {
+	transactionID := make([]byte, 16)
+	binary.BigEndian.PutUint32(transactionID[:4], magicCookie)
+	port := uint16(54321)
+	ip := net.ParseIP("192.0.2.25").To4()
+	value := []byte{0, attributeFamilyIPv4, byte((port ^ uint16(magicCookie>>16)) >> 8), byte(port ^ uint16(magicCookie>>16))}
+	for i := range ip {
+		value = append(value, ip[i]^transactionID[i])
+	}
+	p := &packet{
+		transID: transactionID,
+		attributes: []attribute{
+			*newAttribute(attributeXorMappedAddressExp, value),
+		},
+	}
+
+	host, present := p.getXorMappedAddr()
+	if !present || host == nil || host.IP() != "192.0.2.25" || host.Port() != port {
+		t.Fatalf("experimental XOR-MAPPED-ADDRESS = %#v, present %v", host, present)
+	}
+}
+
+func TestServerErrorString(t *testing.T) {
+	tests := []struct {
+		err  *ServerError
+		want string
+	}{
+		{err: &ServerError{Code: 420}, want: "stun server returned error 420"},
+		{err: &ServerError{Code: 500, Reason: "Server Error"}, want: "stun server returned error 500: Server Error"},
+	}
+	for _, tt := range tests {
+		if got := tt.err.Error(); got != tt.want {
+			t.Errorf("ServerError.Error() = %q, want %q", got, tt.want)
+		}
 	}
 }
 
@@ -357,6 +397,55 @@ func TestPacketParserRandomInputs(t *testing.T) {
 		}
 		if got := parsed.bytes(); !bytes.Equal(got, wire) {
 			t.Fatalf("valid randomized packet did not round trip\ngot  %x\nwant %x", got, wire)
+		}
+	}
+}
+
+func TestKnownRequiredAttributeScope(t *testing.T) {
+	comprehended := []uint16{
+		attributeMappedAddress,
+		attributeResponseAddress,
+		attributeChangeRequest,
+		attributeSourceAddress,
+		attributeChangedAddress,
+		attributeUsername,
+		attributePassword,
+		attributeMessageIntegrity,
+		attributeErrorCode,
+		attributeUnknownAttributes,
+		attributeReflectedFrom,
+		attributeRealm,
+		attributeNonce,
+		attributeXorMappedAddress,
+		attributePadding,
+		attributeResponsePort,
+	}
+	for _, attributeType := range comprehended {
+		if !isKnownRequiredAttribute(attributeType) {
+			t.Errorf("attribute %#04x is not recognized", attributeType)
+		}
+	}
+
+	uncomprehended := []uint16{
+		attributeChannelNumber,
+		attributeLifetime,
+		attributeBandwidth,
+		attributeXorPeerAddress,
+		attributeData,
+		attributeXorRelayedAddress,
+		attributeRequestedAddressFamily,
+		attributeEvenPort,
+		attributeRequestedTransport,
+		attributeDontFragment,
+		attributeTimerVal,
+		attributeReservationToken,
+		attributePriority,
+		attributeUseCandidate,
+		attributeConnectionID,
+	}
+	for _, attributeType := range uncomprehended {
+		if isKnownRequiredAttribute(attributeType) {
+			t.Errorf("uncomprehended attribute %#04x is recognized", attributeType)
 		}
 	}
 }

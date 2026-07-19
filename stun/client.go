@@ -27,6 +27,7 @@ type Client struct {
 	localIP      string
 	localPort    int
 	softwareName string
+	rfc3489Mode  bool
 	conn         net.PacketConn
 	logger       *Logger
 }
@@ -82,10 +83,21 @@ func (c *Client) SetLocalIP(ip string) {
 	c.localIP = ip
 }
 
-// SetSoftwareName sets the client name. It is retained for API compatibility;
-// Binding requests omit optional attributes for RFC 3489 interoperability.
+// SetSoftwareName sets the value sent in the SOFTWARE attribute. The value
+// must be valid UTF-8 and shorter than 128 characters. It is omitted when
+// RFC 3489 compatibility mode is enabled.
 func (c *Client) SetSoftwareName(name string) {
 	c.softwareName = name
+}
+
+// SetRFC3489Compatibility controls interoperability with RFC 3489-only
+// servers. When enabled, Binding requests omit the optional SOFTWARE and
+// FINGERPRINT attributes as recommended by RFC 5389 section 12.1. Requests
+// used for classic NAT discovery still include CHANGE-REQUEST when needed.
+// Compatibility mode is disabled by default to preserve the wire behavior of
+// earlier go-stun releases.
+func (c *Client) SetRFC3489Compatibility(enabled bool) {
+	c.rfc3489Mode = enabled
 }
 
 // Discover contacts the STUN server and returns the NAT type and mapped host.
@@ -120,7 +132,10 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	return c.discover(conn, serverUDPAddr)
 }
 
-// BehaviorTest performs STUN behavior tests.
+// BehaviorTest performs RFC 5780 mapping and filtering behavior tests. If a
+// later probe fails, it returns the behavior fields already determined along
+// with the error. Servers without a usable alternate address return
+// ErrBehaviorDiscoveryUnsupported.
 func (c *Client) BehaviorTest() (*NATBehavior, error) {
 	if c.serverAddr == "" {
 		c.SetServerAddr(DefaultServerAddr)

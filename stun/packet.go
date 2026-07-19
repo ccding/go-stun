@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"math"
-	"unicode/utf8"
+	"strings"
 )
 
 type packet struct {
@@ -31,12 +31,20 @@ type packet struct {
 	attributes []attribute
 }
 
-type stunError struct {
+// ServerError reports an ERROR-CODE returned by a STUN server.
+//
+// Callers can inspect the numeric code and sanitized reason with errors.As:
+//
+//	var serverErr *ServerError
+//	if errors.As(err, &serverErr) {
+//		log.Printf("STUN error %d: %s", serverErr.Code, serverErr.Reason)
+//	}
+type ServerError struct {
 	Code   int
 	Reason string
 }
 
-func (e *stunError) Error() string {
+func (e *ServerError) Error() string {
 	if e.Reason == "" {
 		return fmt.Sprintf("stun server returned error %d", e.Code)
 	}
@@ -77,6 +85,9 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 	pkt.attributes = make([]attribute, 0, 10)
 	attributes := packetBytes[20:]
 	for pos := 0; pos < len(attributes); {
+		// Exact framing and four-byte alignment make a short trailing header
+		// unreachable for packets accepted above. Keep this local guard so this
+		// loop remains safe if those framing rules are ever relaxed.
 		if len(attributes)-pos < 4 {
 			return nil, errors.New("received data format mismatch")
 		}
@@ -150,20 +161,14 @@ func (v *packet) getRawAddr(attribute uint16) *Host {
 	return nil
 }
 
-func (v *packet) getXorMappedAddr() *Host {
-	addr := v.getXorAddr(attributeXorMappedAddress)
-	if addr == nil {
-		addr = v.getXorAddr(attributeXorMappedAddressExp)
+func (v *packet) getXorMappedAddr() (*Host, bool) {
+	if a := v.getAttributeBeforeIntegrity(attributeXorMappedAddress); a != nil {
+		return a.xorAddr(v.transID), true
 	}
-	return addr
-}
-
-func (v *packet) getXorAddr(attribute uint16) *Host {
-	a := v.getAttributeBeforeIntegrity(attribute)
-	if a != nil {
-		return a.xorAddr(v.transID)
+	if a := v.getAttributeBeforeIntegrity(attributeXorMappedAddressExp); a != nil {
+		return a.xorAddr(v.transID), true
 	}
-	return nil
+	return nil, false
 }
 
 func (v *packet) getAttributeBeforeIntegrity(types uint16) *attribute {
@@ -185,6 +190,10 @@ func (v *packet) validateBindingResponseAttributes() error {
 		if a.types == attributeMessageIntegrity && a.length != 20 {
 			return errors.New("binding response has invalid MESSAGE-INTEGRITY")
 		}
+		if (a.types == attributeXorMappedAddress || a.types == attributeXorMappedAddressExp) &&
+			a.xorAddr(v.transID) == nil {
+			return errors.New("binding response has invalid XOR-MAPPED-ADDRESS")
+		}
 		if a.types < 0x8000 && !isKnownRequiredAttribute(a.types) {
 			return fmt.Errorf("binding response contains unknown required attribute %#04x", a.types)
 		}
@@ -205,11 +214,20 @@ func (v *packet) bindingError() error {
 	}
 	class := int(a.value[2] & 0x07)
 	number := int(a.value[3])
-	reason := a.value[4:]
-	if class < 3 || class > 6 || number > 99 || !utf8.Valid(reason) || utf8.RuneCount(reason) >= 128 {
+	if class < 3 || class > 6 || number > 99 {
 		return errors.New("binding error response has an invalid ERROR-CODE")
 	}
-	return &stunError{Code: class*100 + number, Reason: string(reason)}
+
+	// RFC 3489 includes space padding in the ERROR-CODE attribute's declared
+	// length. Preserve the useful code even when a server sends malformed UTF-8
+	// or an overlong reason; those are sender errors, not structural ambiguity.
+	reason := strings.TrimRight(string(a.value[4:]), " ")
+	reason = strings.ToValidUTF8(reason, "\uFFFD")
+	runes := []rune(reason)
+	if len(runes) > 127 {
+		reason = string(runes[:127])
+	}
+	return &ServerError{Code: class*100 + number, Reason: reason}
 }
 
 func isKnownRequiredAttribute(types uint16) bool {
@@ -225,26 +243,11 @@ func isKnownRequiredAttribute(types uint16) bool {
 		attributeErrorCode,
 		attributeUnknownAttributes,
 		attributeReflectedFrom,
-		attributeChannelNumber,
-		attributeLifetime,
-		attributeBandwidth,
-		attributeXorPeerAddress,
-		attributeData,
 		attributeRealm,
 		attributeNonce,
-		attributeXorRelayedAddress,
-		attributeRequestedAddressFamily,
-		attributeEvenPort,
-		attributeRequestedTransport,
-		attributeDontFragment,
 		attributeXorMappedAddress,
-		attributeTimerVal,
-		attributeReservationToken,
-		attributePriority,
-		attributeUseCandidate,
 		attributePadding,
-		attributeResponsePort,
-		attributeConnectionID:
+		attributeResponsePort:
 		return true
 	default:
 		return false

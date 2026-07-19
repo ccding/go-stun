@@ -18,11 +18,7 @@ import (
 	"net"
 )
 
-// Padding the length of the byte slice to multiple of 4.
-func padding(bytes []byte) []byte {
-	length := uint16(len(bytes))
-	return append(bytes, make([]byte, align(length)-length)...)
-}
+var interfaceAddrs = net.InterfaceAddrs
 
 // Align the uint16 number to the smallest multiple of 4, which is larger than
 // or equal to the uint16 number.
@@ -47,7 +43,7 @@ func isLocalAddress(local, localRemote string) bool {
 		return addr.IP.Equal(localRemoteAddr.IP)
 	}
 	// Fallback to checking IPs of all interfaces
-	addrs, err := net.InterfaceAddrs()
+	addrs, err := interfaceAddrs()
 	if err != nil {
 		return false
 	}

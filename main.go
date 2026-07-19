@@ -15,8 +15,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/ccding/go-stun/stun"
@@ -27,6 +29,7 @@ func main() {
 	var localPort = flag.Int("p", 0, "The port on which to bind requests, set to 0 to pick a random port")
 	var localIP = flag.String("i", "", "The ip on which to bind requests, set to empty will use default")
 	var behaviorTestMode = flag.Bool("b", false, "Enable NAT behavior test mode")
+	var legacyMode = flag.Bool("legacy", false, "Enable compatibility with RFC 3489-only STUN servers")
 	var verboseLevel = flag.Int("v", 0, "Verbose level (0: none, 1: verbose, 2: double verbose, 3: triple verbose)")
 	flag.Parse()
 
@@ -41,6 +44,7 @@ func main() {
 	client.SetServerAddr(*serverAddr)
 	client.SetLocalPort(*localPort)
 	client.SetLocalIP(*localIP)
+	client.SetRFC3489Compatibility(*legacyMode)
 	client.SetVerbose(*verboseLevel >= 1)
 	client.SetVVerbose(*verboseLevel >= 2)
 
@@ -71,14 +75,53 @@ func main() {
 
 func runBehaviorTest(c *stun.Client) error {
 	natBehavior, err := c.BehaviorTest()
+	return writeBehaviorTestResult(os.Stdout, natBehavior, err)
+}
+
+func writeBehaviorTestResult(w io.Writer, natBehavior *stun.NATBehavior, err error) error {
 	if err != nil {
+		if errors.Is(err, stun.ErrBehaviorDiscoveryUnsupported) {
+			_, writeErr := fmt.Fprintln(w, err)
+			return writeErr
+		}
+		if writeErr := writePartialBehaviorTestResult(w, natBehavior); writeErr != nil {
+			return writeErr
+		}
 		return err
 	}
 
 	if natBehavior != nil {
-		fmt.Println("  Mapping Behavior:", natBehavior.MappingType)
-		fmt.Println("Filtering Behavior:", natBehavior.FilteringType)
-		fmt.Println("   Normal NAT Type:", natBehavior.NormalType())
+		if _, err := fmt.Fprintln(w, "  Mapping Behavior:", natBehavior.MappingType); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(w, "Filtering Behavior:", natBehavior.FilteringType); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(w, "   Normal NAT Type:", natBehavior.NormalType()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writePartialBehaviorTestResult(w io.Writer, natBehavior *stun.NATBehavior) error {
+	if natBehavior == nil {
+		return nil
+	}
+	if natBehavior.MappingType != stun.BehaviorTypeUnknown {
+		if _, err := fmt.Fprintln(w, "  Mapping Behavior:", natBehavior.MappingType); err != nil {
+			return err
+		}
+	}
+	if natBehavior.FilteringType != stun.BehaviorTypeUnknown {
+		if _, err := fmt.Fprintln(w, "Filtering Behavior:", natBehavior.FilteringType); err != nil {
+			return err
+		}
+	}
+	if natBehavior.NoTranslation {
+		if _, err := fmt.Fprintln(w, "   Normal NAT Type:", natBehavior.NormalType()); err != nil {
+			return err
+		}
 	}
 	return nil
 }

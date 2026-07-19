@@ -20,6 +20,7 @@ import (
 	"errors"
 	"net"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -36,9 +37,18 @@ func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, changeIP boo
 		return nil, err
 	}
 	pkt.types = typeBindingRequest
+	if !c.rfc3489Mode {
+		if !utf8.ValidString(c.softwareName) || utf8.RuneCountInString(c.softwareName) >= 128 {
+			return nil, errors.New("software name must be valid UTF-8 and shorter than 128 characters")
+		}
+		pkt.addAttribute(*newSoftwareAttribute(c.softwareName))
+	}
 	if changeIP || changePort {
 		attribute := newChangeReqAttribute(changeIP, changePort)
 		pkt.addAttribute(*attribute)
+	}
+	if !c.rfc3489Mode {
+		pkt.addAttribute(*newFingerprintAttribute(pkt))
 	}
 	// Send packet.
 	return c.send(pkt, conn, addr)
@@ -82,14 +92,17 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 			if err != nil {
 				// A UDP socket can receive unrelated or malformed traffic. RFC 5389
 				// requires invalid STUN messages to be silently discarded.
+				c.logger.Debugf("Discard response from %v: %v", raddr, err)
 				continue
 			}
 			// If transId mismatches, keep reading until get a
 			// matched packet or timeout.
 			if !bytes.Equal(pkt.transID, p.transID) {
+				c.logger.Debugf("Discard response from %v: transaction ID mismatch", raddr)
 				continue
 			}
 			if p.types != typeBindingResponse && p.types != typeBindingErrorResponse {
+				c.logger.Debugf("Discard response from %v: unexpected message type %#04x", raddr, p.types)
 				continue
 			}
 			c.logger.Info("\n" + hex.Dump(packetBytes[0:length]))

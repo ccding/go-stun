@@ -16,8 +16,14 @@ package stun
 
 import (
 	"errors"
+	"fmt"
 	"net"
 )
+
+// ErrBehaviorDiscoveryUnsupported indicates that the server answered a
+// Binding request but did not advertise a usable alternate address, which is
+// required for RFC 5780 mapping and filtering behavior discovery.
+var ErrBehaviorDiscoveryUnsupported = errors.New("server does not support RFC 5780 behavior discovery")
 
 // Follow RFC 3489 and RFC 5389.
 // Figure 2: Flow for type discovery process (from RFC 3489).
@@ -81,6 +87,8 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	changedAddr := resp.changedAddr
 	// mappedAddr is used as the return value, its IP is used for tests
 	mappedAddr := resp.mappedAddr
+	// send currently rejects mapped-address-less success responses. Keep this
+	// guard as defense in depth if response construction changes later.
 	if mappedAddr == nil {
 		return NATError, nil, errors.New("server response has no mapped address")
 	}
@@ -96,6 +104,12 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	}
 	// changedAddr shall not be nil
 	if changedAddr == nil {
+		return NATUnknown, mappedAddr, nil
+	}
+	// RFC 3489 CHANGED-ADDRESS and RFC 5780 OTHER-ADDRESS identify an
+	// alternate IP and port. A primary endpoint advertised as its own
+	// alternate cannot support the remaining classification probes.
+	if !isUsableAlternate(addr, changedAddr) {
 		return NATUnknown, mappedAddr, nil
 	}
 	// Perform test2 to see if the client can receive packet sent from
@@ -128,7 +142,7 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	c.logger.Debugln("Send To:", changedAddr)
 	caddr, err := net.ResolveUDPAddr("udp", changedAddr.String())
 	if err != nil {
-		c.logger.Debugf("ResolveUDPAddr error: %v", err)
+		return NATError, mappedAddr, fmt.Errorf("resolve server alternate address %q: %w", changedAddr, err)
 	}
 	resp, err = c.test1(conn, caddr)
 	if err != nil {
@@ -136,8 +150,8 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	}
 	c.logger.Debugln("Received:", resp)
 	if resp == nil {
-		// It should be NAT_BLOCKED, but will be detected in the first
-		// step. So this will never happen.
+		// The primary address worked, but the alternate address is
+		// unreachable, so classification cannot continue.
 		return NATUnknown, mappedAddr, nil
 	}
 	// Make sure IP/port is not changed.
@@ -178,14 +192,23 @@ func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehav
 	if err != nil {
 		return nil, err
 	}
+	natBehavior.NoTranslation = resp1.identical
 	// use otherAddr or changedAddr
 	otherAddr := resp1.otherAddr
 	if otherAddr == nil {
 		if resp1.changedAddr != nil {
 			otherAddr = resp1.changedAddr
 		} else {
-			return nil, errors.New("server error: no other address and changed address")
+			return natBehavior, ErrBehaviorDiscoveryUnsupported
 		}
+	}
+	if !isUsableAlternate(addr, otherAddr) {
+		return natBehavior, fmt.Errorf("%w: alternate address %s must use a different IP and port from primary %s",
+			ErrBehaviorDiscoveryUnsupported, otherAddr, addr)
+	}
+	alternateAddr, err := net.ResolveUDPAddr("udp", otherAddr.String())
+	if err != nil {
+		return natBehavior, fmt.Errorf("resolve server alternate address %q: %w", otherAddr, err)
 	}
 
 	// Filtering Test II ->(IP1,port1)   (IP2,port2)->
@@ -231,10 +254,10 @@ func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehav
 	// Perform test to see if mapping to the same IP and port when sending to
 	// another IP.
 	c.logger.Debugln("Do Mapping Test II")
-	tmpAddr := &net.UDPAddr{IP: net.ParseIP(otherAddr.IP()), Port: addr.Port}
-	resp2, err := c.test(conn, tmpAddr)
+	tmpAddr := &net.UDPAddr{IP: alternateAddr.IP, Port: addr.Port}
+	resp2, err := c.testBehaviorAlternate(conn, tmpAddr)
 	if err != nil {
-		return nil, err
+		return natBehavior, err
 	}
 	if resp2.mappedAddr.IP() == resp1.mappedAddr.IP() &&
 		resp2.mappedAddr.Port() == resp1.mappedAddr.Port() {
@@ -246,10 +269,10 @@ func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehav
 	// another port.
 	if natBehavior.MappingType == BehaviorTypeUnknown {
 		c.logger.Debugln("Do Mapping Test III")
-		tmpAddr.Port = int(otherAddr.Port())
-		resp3, err := c.test(conn, tmpAddr)
+		tmpAddr.Port = alternateAddr.Port
+		resp3, err := c.testBehaviorAlternate(conn, tmpAddr)
 		if err != nil {
-			return nil, err
+			return natBehavior, err
 		}
 		if resp3.mappedAddr.IP() == resp2.mappedAddr.IP() &&
 			resp3.mappedAddr.Port() == resp2.mappedAddr.Port() {
@@ -260,4 +283,33 @@ func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehav
 	}
 
 	return natBehavior, nil
+}
+
+// isUsableAlternate reports whether alternate can exercise both the alternate
+// IP and alternate port paths required by RFC 3489/RFC 5780 discovery.
+func isUsableAlternate(primary *net.UDPAddr, alternate *Host) bool {
+	if primary == nil || primary.IP == nil || alternate == nil || alternate.Port() == 0 {
+		return false
+	}
+	alternateIP := net.ParseIP(alternate.IP())
+	return alternateIP != nil && !primary.IP.Equal(alternateIP) && primary.Port != int(alternate.Port())
+}
+
+// testBehaviorAlternate sends a mapping probe without treating a timeout as
+// generic NAT blocking. The primary endpoint already answered, so a timeout
+// here specifically means that the advertised alternate endpoint failed.
+func (c *Client) testBehaviorAlternate(conn net.PacketConn, addr *net.UDPAddr) (*response, error) {
+	c.logger.Debugln("Send To:", addr)
+	resp, err := c.test1(conn, addr)
+	if err != nil {
+		return nil, err
+	}
+	c.logger.Debugln("Received:", resp)
+	if resp == nil {
+		return nil, fmt.Errorf("no response from server alternate address %s", addr)
+	}
+	if !addrCompare(resp.serverAddr, addr, false, false) {
+		return nil, errors.New("server error: response IP/port")
+	}
+	return resp, nil
 }
