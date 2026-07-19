@@ -84,7 +84,12 @@ func main() {
 	}
 }
 
-func runDiscovery(client *stun.Client, transport string) (stun.NATType, *stun.Host, bool, error) {
+type discoveryClient interface {
+	Discover() (stun.NATType, *stun.Host, error)
+	DiscoverTCP() (*stun.Host, error)
+}
+
+func runDiscovery(client discoveryClient, transport string) (stun.NATType, *stun.Host, bool, error) {
 	switch transport {
 	case "udp":
 		nat, host, err := client.Discover()
