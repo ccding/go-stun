@@ -105,7 +105,7 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	if conn == nil {
 		var laddr *net.UDPAddr
 
-		if c.localPort != 0  || c.localIP != "" {
+		if c.localPort != 0 || c.localIP != "" {
 			var address = fmt.Sprintf("%s:%d", c.localIP, c.localPort)
 
 			laddr, err = net.ResolveUDPAddr("udp", address)
@@ -139,7 +139,7 @@ func (c *Client) BehaviorTest() (*NATBehavior, error) {
 	conn := c.conn
 	if conn == nil {
 		var laddr *net.UDPAddr
-		if c.localPort != 0  || c.localIP != "" {
+		if c.localPort != 0 || c.localIP != "" {
 			var address = fmt.Sprintf("%s:%d", c.localIP, c.localPort)
 
 			laddr, err = net.ResolveUDPAddr("udp", address)
