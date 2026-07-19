@@ -78,7 +78,7 @@ Available options:
 | `-p port` | Bind requests to a local port; `0` selects an available port. |
 | `-b` | Run RFC 5780 mapping and filtering behavior tests. |
 | `-legacy` | Omit modern optional attributes for RFC 3489-only servers. |
-| `-t udp|tcp` | Select UDP (the default) or TCP transport. TCP performs basic Binding only. |
+| `-t transport` | Select `udp` (the default) or `tcp`. TCP performs basic Binding only. |
 | `-v level` | Set verbosity to `0` (quiet), `1` (protocol trace), or `2`/`3` (also dump packets in hex); values above `3` are rejected. |
 
 Use `go-stun -h` to see the current defaults. For example:
@@ -143,8 +143,9 @@ returning. Because a reflexive TCP address remains useful only while its
 connection is open, applications that need to retain the mapping should dial
 the server themselves and use `NewClientWithTCPConnection`. The caller owns
 that connection and can call `DiscoverTCP` again to refresh the mapping. Use
-`SetTCPTimeout` to replace the [RFC 8489] default transaction timeout of 39.5
-seconds.
+`SetTCPTimeout` to replace the [RFC 8489] default response timeout of 39.5
+seconds. When `DiscoverTCP` opens the connection itself, the same duration
+also bounds connection establishment independently.
 
 Run `go doc github.com/ccding/go-stun/stun` for documentation matching the
 version in your module. The linked [package reference] shows the latest tagged

@@ -170,6 +170,9 @@ func TestDiscoverTCPDialsAndClosesConnection(t *testing.T) {
 		if address != "198.51.100.1:3478" {
 			t.Fatalf("dial address = %q", address)
 		}
+		if dialer.Timeout != time.Second {
+			t.Fatalf("dial timeout = %v", dialer.Timeout)
+		}
 		local, ok := dialer.LocalAddr.(*net.TCPAddr)
 		if !ok || !local.IP.Equal(net.ParseIP("127.0.0.1")) {
 			t.Fatalf("dial local address = %#v", dialer.LocalAddr)

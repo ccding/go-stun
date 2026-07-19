@@ -26,9 +26,10 @@ import (
 	"time"
 )
 
-// DefaultTCPTimeout is the RFC 8489 default timeout for a STUN transaction
-// over TCP. TCP provides reliability, so requests are not retransmitted at
-// the STUN layer.
+// DefaultTCPTimeout is the RFC 8489 default time to wait for a STUN response
+// after sending a request over TCP. TCP provides reliability, so requests are
+// not retransmitted at the STUN layer. When the client opens the connection,
+// the same duration independently bounds connection establishment.
 const DefaultTCPTimeout = 39500 * time.Millisecond
 
 // NewClientWithTCPConnection returns a client that performs TCP Binding
@@ -42,8 +43,10 @@ func NewClientWithTCPConnection(conn net.Conn) *Client {
 	return c
 }
 
-// SetTCPTimeout sets the total timeout for each TCP Binding transaction. The
-// RFC 8489 default is DefaultTCPTimeout.
+// SetTCPTimeout sets how long a TCP Binding transaction waits for a response.
+// When DiscoverTCP opens the connection, the same duration independently
+// bounds connection establishment. The RFC 8489 default response timeout is
+// DefaultTCPTimeout.
 func (c *Client) SetTCPTimeout(timeout time.Duration) error {
 	if timeout <= 0 {
 		return errors.New("TCP timeout must be positive")
