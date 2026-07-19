@@ -18,10 +18,10 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"time"
 )
 
-// Client is a STUN client, which can be set STUN server address and is used
-// to discover NAT type.
+// Client performs STUN Binding transactions and UDP NAT behavior discovery.
 type Client struct {
 	serverAddr   string
 	localIP      string
@@ -29,11 +29,15 @@ type Client struct {
 	softwareName string
 	rfc3489Mode  bool
 	conn         net.PacketConn
+	tcpConn      net.Conn
+	tcpConnSet   bool
+	tcpTimeout   time.Duration
+	tcpDial      func(*net.Dialer, string) (net.Conn, error)
 	logger       *Logger
 }
 
-// NewClient returns a client without network connection. The network
-// connection will be build when calling Discover function.
+// NewClient returns a client that creates its network connection when a
+// discovery method is called.
 func NewClient() *Client {
 	c := new(Client)
 	c.SetSoftwareName(DefaultSoftwareName)

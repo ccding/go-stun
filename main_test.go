@@ -33,6 +33,54 @@ func TestWriteBehaviorTestResultTreatsUnsupportedServerAsSuccess(t *testing.T) {
 	}
 }
 
+func TestRunDiscoveryRejectsUnknownTransport(t *testing.T) {
+	nat, host, hasNATType, err := runDiscovery(stun.NewClient(), "sctp")
+	if nat != stun.NATError || host != nil || hasNATType || err == nil {
+		t.Fatalf("runDiscovery() = %v, %#v, %v, %v", nat, host, hasNATType, err)
+	}
+}
+
+type discoveryClientStub struct {
+	udpCalls int
+	tcpCalls int
+	udpErr   error
+	tcpErr   error
+}
+
+func (c *discoveryClientStub) Discover() (stun.NATType, *stun.Host, error) {
+	c.udpCalls++
+	return stun.NATFull, nil, c.udpErr
+}
+
+func (c *discoveryClientStub) DiscoverTCP() (*stun.Host, error) {
+	c.tcpCalls++
+	return nil, c.tcpErr
+}
+
+func TestRunDiscoveryDispatchesUDP(t *testing.T) {
+	wantErr := errors.New("UDP failed")
+	client := &discoveryClientStub{udpErr: wantErr}
+	nat, host, hasNATType, err := runDiscovery(client, "udp")
+	if nat != stun.NATFull || host != nil || !hasNATType || !errors.Is(err, wantErr) {
+		t.Fatalf("runDiscovery() = %v, %#v, %v, %v", nat, host, hasNATType, err)
+	}
+	if client.udpCalls != 1 || client.tcpCalls != 0 {
+		t.Fatalf("calls = UDP %d, TCP %d", client.udpCalls, client.tcpCalls)
+	}
+}
+
+func TestRunDiscoveryDispatchesTCP(t *testing.T) {
+	wantErr := errors.New("TCP failed")
+	client := &discoveryClientStub{tcpErr: wantErr}
+	nat, host, hasNATType, err := runDiscovery(client, "tcp")
+	if nat != stun.NATUnknown || host != nil || hasNATType || !errors.Is(err, wantErr) {
+		t.Fatalf("runDiscovery() = %v, %#v, %v, %v", nat, host, hasNATType, err)
+	}
+	if client.udpCalls != 0 || client.tcpCalls != 1 {
+		t.Fatalf("calls = UDP %d, TCP %d", client.udpCalls, client.tcpCalls)
+	}
+}
+
 func TestWriteBehaviorTestResultPreservesUnsupportedNoTranslation(t *testing.T) {
 	var output bytes.Buffer
 	behavior := &stun.NATBehavior{NoTranslation: true}

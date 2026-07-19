@@ -28,7 +28,11 @@ type response struct {
 	identical   bool    // if mappedAddr is in local addr list
 }
 
-func newResponse(pkt *packet, conn net.PacketConn) *response {
+type localAddrProvider interface {
+	LocalAddr() net.Addr
+}
+
+func newResponse(pkt *packet, conn localAddrProvider) *response {
 	resp := &response{pkt, nil, nil, nil, nil, false}
 	if pkt == nil {
 		return resp
