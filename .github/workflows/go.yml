@@ -22,7 +22,7 @@ env:
   STATICCHECK_VERSION: "v0.7.0"
   GOVULNCHECK_VERSION: "v1.6.0"
   # Protect the current baseline; raise this as more paths gain tests.
-  MINIMUM_COVERAGE: "17.0"
+  MINIMUM_COVERAGE: "84.0"
 
 jobs:
   quality:

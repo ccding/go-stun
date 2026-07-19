@@ -28,7 +28,7 @@ type Host struct {
 
 func newHostFromStr(s string) *Host {
 	udpAddr, err := net.ResolveUDPAddr("udp", s)
-	if err != nil {
+	if err != nil || udpAddr.IP == nil {
 		return nil
 	}
 	host := new(Host)
