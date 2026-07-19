@@ -27,12 +27,23 @@ type attribute struct {
 	padding []byte
 }
 
+// A STUN message body has a uint16 length and must be a multiple of four, so
+// its largest representable size is 65,532 bytes. An attribute value must
+// leave four of those bytes for its type and length fields.
+const maxAttributeValueLength = 1<<16 - 8
+
+// newAttribute copies value into a wire-representable STUN attribute. It
+// panics if value cannot fit in a STUN message; callers only pass locally
+// constructed or already frame-validated values.
 func newAttribute(types uint16, value []byte) *attribute {
+	if len(value) > maxAttributeValueLength {
+		panic("stun: attribute value exceeds maximum STUN message size")
+	}
 	att := new(attribute)
 	att.types = types
 	att.value = append([]byte(nil), value...)
 	att.length = uint16(len(value))
-	att.padding = make([]byte, int(align(att.length)-att.length))
+	att.padding = make([]byte, align(len(value))-len(value))
 	return att
 }
 

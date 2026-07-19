@@ -81,6 +81,24 @@ func TestWriteBehaviorTestResultPreservesPartialBehavior(t *testing.T) {
 	}
 }
 
+func TestWriteBehaviorTestResultClassifiesCompletePartialBehavior(t *testing.T) {
+	var output bytes.Buffer
+	wantErr := errors.New("later behavior probe failed")
+	behavior := &stun.NATBehavior{
+		MappingType:   stun.BehaviorTypeEndpoint,
+		FilteringType: stun.BehaviorTypeAddrAndPort,
+	}
+	if got := writeBehaviorTestResult(&output, behavior, wantErr); !errors.Is(got, wantErr) {
+		t.Fatalf("error = %v, want %v", got, wantErr)
+	}
+	wantOutput := "  Mapping Behavior: EndpointIndependent\n" +
+		"Filtering Behavior: AddressAndPortDependent\n" +
+		"   Normal NAT Type: Port Restricted cone NAT\n"
+	if got := output.String(); got != wantOutput {
+		t.Fatalf("output = %q, want %q", got, wantOutput)
+	}
+}
+
 type failingWriter struct {
 	err error
 }
@@ -105,6 +123,86 @@ func TestWritePartialBehaviorTestResultReportsKnownMapping(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, want := output.String(), "  Mapping Behavior: EndpointIndependent\n"; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
+func TestWritePartialBehaviorTestResultReportsCompleteClassification(t *testing.T) {
+	var output bytes.Buffer
+	behavior := &stun.NATBehavior{
+		MappingType:   stun.BehaviorTypeEndpoint,
+		FilteringType: stun.BehaviorTypeAddr,
+	}
+	if err := writePartialBehaviorTestResult(&output, behavior); err != nil {
+		t.Fatal(err)
+	}
+	want := "  Mapping Behavior: EndpointIndependent\n" +
+		"Filtering Behavior: AddressDependent\n" +
+		"   Normal NAT Type: Restricted cone NAT\n"
+	if got := output.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
+func TestWritePartialBehaviorTestResultReportsUndefinedCompleteClassification(t *testing.T) {
+	var output bytes.Buffer
+	behavior := &stun.NATBehavior{
+		MappingType:   stun.BehaviorTypeAddr,
+		FilteringType: stun.BehaviorTypeEndpoint,
+	}
+	if err := writePartialBehaviorTestResult(&output, behavior); err != nil {
+		t.Fatal(err)
+	}
+	want := "  Mapping Behavior: AddressDependent\n" +
+		"Filtering Behavior: EndpointIndependent\n" +
+		"   Normal NAT Type: Undefined\n"
+	if got := output.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
+func TestWritePartialBehaviorTestResultSuppressesIncompleteClassification(t *testing.T) {
+	tests := []struct {
+		name     string
+		behavior *stun.NATBehavior
+		want     string
+	}{
+		{
+			name:     "neither behavior known",
+			behavior: &stun.NATBehavior{},
+		},
+		{
+			name:     "only mapping known",
+			behavior: &stun.NATBehavior{MappingType: stun.BehaviorTypeEndpoint},
+			want:     "  Mapping Behavior: EndpointIndependent\n",
+		},
+		{
+			name:     "only filtering known",
+			behavior: &stun.NATBehavior{FilteringType: stun.BehaviorTypeAddrAndPort},
+			want:     "Filtering Behavior: AddressAndPortDependent\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := writePartialBehaviorTestResult(&output, tt.behavior); err != nil {
+				t.Fatal(err)
+			}
+			if got := output.String(); got != tt.want {
+				t.Fatalf("output = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWritePartialBehaviorTestResultReportsNoTranslationClassification(t *testing.T) {
+	var output bytes.Buffer
+	behavior := &stun.NATBehavior{NoTranslation: true}
+	if err := writePartialBehaviorTestResult(&output, behavior); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := output.String(), "   Normal NAT Type: Open Internet (no NAT)\n"; got != want {
 		t.Fatalf("output = %q, want %q", got, want)
 	}
 }

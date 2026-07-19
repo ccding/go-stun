@@ -263,7 +263,7 @@ func TestPacketPaddingLengths(t *testing.T) {
 			value := bytes.Repeat([]byte{0xa5}, length)
 			p.addAttribute(*newAttribute(attributeSoftware, value))
 			wire := p.bytes()
-			wantBody := 4 + int(align(uint16(length)))
+			wantBody := 4 + align(length)
 			if len(wire) != 20+wantBody || int(p.length) != wantBody {
 				t.Fatalf("value length %d: wire=%d body=%d", length, len(wire), p.length)
 			}

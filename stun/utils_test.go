@@ -22,8 +22,8 @@ import (
 
 func TestAlign(t *testing.T) {
 	tests := []struct {
-		input uint16
-		want  uint16
+		input int
+		want  int
 	}{
 		{0, 0},
 		{1, 4},
@@ -36,8 +36,9 @@ func TestAlign(t *testing.T) {
 		{65529, 65532},
 		{65531, 65532},
 		{65532, 65532},
-		{65533, 0},
-		{65535, 0},
+		{65533, 65536},
+		{65534, 65536},
+		{65535, 65536},
 	}
 	for _, tt := range tests {
 		if got := align(tt.input); got != tt.want {

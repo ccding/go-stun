@@ -20,10 +20,11 @@ import (
 
 var interfaceAddrs = net.InterfaceAddrs
 
-// Align the uint16 number to the smallest multiple of 4, which is larger than
-// or equal to the uint16 number.
-func align(n uint16) uint16 {
-	return (n + 3) & 0xfffc
+// align rounds a STUN field length up to the smallest multiple of four that
+// is greater than or equal to n. It uses int arithmetic so every uint16 wire
+// length, including 65,533 through 65,535, aligns without wrapping.
+func align(n int) int {
+	return (n + 3) &^ 3
 }
 
 // isLocalAddress check if localRemote is a local address.

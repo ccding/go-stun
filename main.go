@@ -121,7 +121,9 @@ func writePartialBehaviorTestResult(w io.Writer, natBehavior *stun.NATBehavior) 
 			return err
 		}
 	}
-	if natBehavior.NoTranslation {
+	if natBehavior.NoTranslation ||
+		(natBehavior.MappingType != stun.BehaviorTypeUnknown &&
+			natBehavior.FilteringType != stun.BehaviorTypeUnknown) {
 		if _, err := fmt.Fprintln(w, "   Normal NAT Type:", natBehavior.NormalType()); err != nil {
 			return err
 		}

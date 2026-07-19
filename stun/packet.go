@@ -95,7 +95,7 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 		types := binary.BigEndian.Uint16(attributes[pos : pos+2])
 		length := int(binary.BigEndian.Uint16(attributes[pos+2 : pos+4]))
 		end := pos + 4 + length
-		paddedEnd := pos + 4 + int(align(uint16(length)))
+		paddedEnd := pos + 4 + align(length)
 		if end > len(attributes) || paddedEnd > len(attributes) {
 			return nil, errors.New("received data format mismatch")
 		}
@@ -121,8 +121,12 @@ func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 }
 
 func (v *packet) addAttribute(a attribute) {
+	newLength := int(v.length) + 4 + align(int(a.length))
+	if newLength > math.MaxUint16 {
+		panic("stun: packet attributes exceed maximum STUN message size")
+	}
 	v.attributes = append(v.attributes, a)
-	v.length += align(a.length) + 4
+	v.length = uint16(newLength)
 }
 
 func (v *packet) bytes() []byte {

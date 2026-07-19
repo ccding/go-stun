@@ -15,10 +15,119 @@
 package stun
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"testing"
 )
+
+func TestNewAttributeLengthBoundaries(t *testing.T) {
+	tests := []struct {
+		name        string
+		length      int
+		wantPadding int
+	}{
+		{name: "empty", length: 0, wantPadding: 0},
+		{name: "one byte", length: 1, wantPadding: 3},
+		{name: "already aligned", length: 4, wantPadding: 0},
+		{name: "maximum minus one", length: maxAttributeValueLength - 1, wantPadding: 1},
+		{name: "maximum", length: maxAttributeValueLength, wantPadding: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			value := bytes.Repeat([]byte{0xa5}, tt.length)
+			a := newAttribute(attributeSoftware, value)
+			if int(a.length) != tt.length {
+				t.Fatalf("length = %d, want %d", a.length, tt.length)
+			}
+			if !bytes.Equal(a.value, value) {
+				t.Fatal("attribute value was not preserved")
+			}
+			if len(a.padding) != tt.wantPadding {
+				t.Fatalf("padding length = %d, want %d", len(a.padding), tt.wantPadding)
+			}
+			if len(value) > 0 {
+				value[0] ^= 0xff
+				if a.value[0] == value[0] {
+					t.Fatal("attribute retained the caller's value buffer")
+				}
+			}
+		})
+	}
+}
+
+func TestNewAttributeRejectsValuesTooLargeForSTUNMessage(t *testing.T) {
+	for _, length := range []int{
+		maxAttributeValueLength + 1,
+		1<<16 - 1,
+		1 << 16,
+		1<<16 + 1,
+	} {
+		t.Run(fmt.Sprintf("length_%d", length), func(t *testing.T) {
+			defer func() {
+				got := recover()
+				if got != "stun: attribute value exceeds maximum STUN message size" {
+					t.Fatalf("panic = %#v, want oversized-attribute error", got)
+				}
+			}()
+			newAttribute(attributeSoftware, make([]byte, length))
+		})
+	}
+}
+
+func TestAddAttributeRejectsPacketLengthOverflow(t *testing.T) {
+	p, err := newPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.addAttribute(*newAttribute(attributeSoftware, make([]byte, maxAttributeValueLength)))
+	if p.length != 65532 || len(p.attributes) != 1 {
+		t.Fatalf("maximum packet body: length=%d attributes=%d", p.length, len(p.attributes))
+	}
+	wire := p.bytes()
+	if len(wire) != 20+65532 {
+		t.Fatalf("maximum packet wire length = %d, want %d", len(wire), 20+65532)
+	}
+	parsed, err := newPacketFromBytes(wire)
+	if err != nil {
+		t.Fatalf("maximum packet did not round trip: %v", err)
+	}
+	if parsed.length != p.length || len(parsed.attributes) != 1 ||
+		len(parsed.attributes[0].value) != maxAttributeValueLength {
+		t.Fatalf("round trip: length=%d attributes=%d value=%d", parsed.length,
+			len(parsed.attributes), len(parsed.attributes[0].value))
+	}
+
+	func() {
+		defer func() {
+			got := recover()
+			if got != "stun: packet attributes exceed maximum STUN message size" {
+				t.Fatalf("panic = %#v, want packet-size error", got)
+			}
+		}()
+		p.addAttribute(*newAttribute(attributeSoftware, nil))
+	}()
+
+	if p.length != 65532 || len(p.attributes) != 1 {
+		t.Fatalf("failed add mutated packet: length=%d attributes=%d", p.length, len(p.attributes))
+	}
+}
+
+func TestOversizedWireAttributeIsRejectedWithoutPanic(t *testing.T) {
+	for _, declaredLength := range []uint16{65533, 65534, 65535} {
+		t.Run(fmt.Sprintf("length_%d", declaredLength), func(t *testing.T) {
+			wire := make([]byte, 20+65532)
+			binary.BigEndian.PutUint16(wire[2:4], 65532)
+			binary.BigEndian.PutUint16(wire[20:22], attributeSoftware)
+			binary.BigEndian.PutUint16(wire[22:24], declaredLength)
+
+			if _, err := newPacketFromBytes(wire); err == nil || err.Error() != "received data format mismatch" {
+				t.Fatalf("newPacketFromBytes error = %v, want format mismatch", err)
+			}
+		})
+	}
+}
 
 func TestChangeRequestAttribute(t *testing.T) {
 	tests := []struct {
