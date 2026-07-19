@@ -33,17 +33,19 @@ func newResponse(pkt *packet, conn net.PacketConn) *response {
 	if pkt == nil {
 		return resp
 	}
-	// RFC 3489 doesn't require the server return XOR mapped address.
-	mappedAddr := pkt.getXorMappedAddr()
-	if mappedAddr == nil {
+	// An RFC 3489 response carries MAPPED-ADDRESS instead of
+	// XOR-MAPPED-ADDRESS. A malformed XOR-MAPPED-ADDRESS must not be treated as
+	// absent and hidden by a valid legacy attribute.
+	mappedAddr, xorMappedPresent := pkt.getXorMappedAddr()
+	if !xorMappedPresent {
 		mappedAddr = pkt.getMappedAddr()
 	}
 	resp.mappedAddr = mappedAddr
 	// compute identical
-	localAddrStr := conn.LocalAddr().String()
-	if mappedAddr != nil {
+	localAddr := conn.LocalAddr()
+	if mappedAddr != nil && localAddr != nil {
 		mappedAddrStr := mappedAddr.String()
-		resp.identical = isLocalAddress(localAddrStr, mappedAddrStr)
+		resp.identical = isLocalAddress(localAddr.String(), mappedAddrStr)
 	}
 	// compute changedAddr
 	changedAddr := pkt.getChangedAddr()

@@ -16,7 +16,6 @@ package stun
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"strconv"
 )
@@ -28,6 +27,7 @@ type Client struct {
 	localIP      string
 	localPort    int
 	softwareName string
+	rfc3489Mode  bool
 	conn         net.PacketConn
 	logger       *Logger
 }
@@ -51,16 +51,26 @@ func NewClientWithConnection(conn net.PacketConn) *Client {
 	return c
 }
 
+// ensureLogger makes the Client zero value safe to use. Constructors install
+// the same logger eagerly, while a directly allocated Client gets it on first
+// use.
+func (c *Client) ensureLogger() *Logger {
+	if c.logger == nil {
+		c.logger = NewLogger()
+	}
+	return c.logger
+}
+
 // SetVerbose sets the client to be in the verbose mode, which prints
 // information in the discover process.
 func (c *Client) SetVerbose(v bool) {
-	c.logger.SetDebug(v)
+	c.ensureLogger().SetDebug(v)
 }
 
 // SetVVerbose sets the client to be in the double verbose mode, which prints
 // information and packet in the discover process.
 func (c *Client) SetVVerbose(v bool) {
-	c.logger.SetInfo(v)
+	c.ensureLogger().SetInfo(v)
 }
 
 // SetServerHost allows user to set the STUN hostname and port.
@@ -83,15 +93,28 @@ func (c *Client) SetLocalIP(ip string) {
 	c.localIP = ip
 }
 
-// SetSoftwareName allows user to set the name of the software, which is used
-// for logging purpose (NOT used in the current implementation).
+// SetSoftwareName sets the value sent in the SOFTWARE attribute. The value
+// must be valid UTF-8 and shorter than 128 characters. It is omitted when
+// RFC 3489 compatibility mode is enabled.
 func (c *Client) SetSoftwareName(name string) {
 	c.softwareName = name
 }
 
-// Discover contacts the STUN server and gets the response of NAT type, host
-// for UDP punching.
+// SetRFC3489Compatibility controls interoperability with RFC 3489-only
+// servers. When enabled, Binding requests omit the optional SOFTWARE and
+// FINGERPRINT attributes as recommended by RFC 5389 section 12.1. Requests
+// used for classic NAT discovery still include CHANGE-REQUEST when needed.
+// Compatibility mode is disabled by default to preserve the wire behavior of
+// earlier go-stun releases.
+func (c *Client) SetRFC3489Compatibility(enabled bool) {
+	c.rfc3489Mode = enabled
+}
+
+// Discover contacts the STUN server and returns the NAT type and mapped host.
+// If Binding succeeds but the server cannot classify NAT behavior, Discover
+// returns NATUnknown together with the mapped host and a nil error.
 func (c *Client) Discover() (NATType, *Host, error) {
+	c.ensureLogger()
 	if c.serverAddr == "" {
 		c.SetServerAddr(DefaultServerAddr)
 	}
@@ -103,30 +126,29 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	// create a connection and close it at the end.
 	conn := c.conn
 	if conn == nil {
-		var laddr *net.UDPAddr
-
-		if c.localPort != 0  || c.localIP != "" {
-			var address = fmt.Sprintf("%s:%d", c.localIP, c.localPort)
-
-			laddr, err = net.ResolveUDPAddr("udp", address)
-			if err != nil {
-				return NATError, nil, err
-			}
-
-			c.logger.Debugln("Local listen address: " + address)
+		laddr, err := c.resolveLocalAddr()
+		if err != nil {
+			return NATError, nil, err
+		}
+		if laddr != nil {
+			c.logger.Debugln("Local listen address: " + laddr.String())
 		}
 
 		conn, err = net.ListenUDP("udp", laddr)
 		if err != nil {
 			return NATError, nil, err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 	}
 	return c.discover(conn, serverUDPAddr)
 }
 
-// BehaviorTest performs STUN behavior tests.
+// BehaviorTest performs RFC 5780 mapping and filtering behavior tests. If a
+// later probe fails, it returns the behavior fields already determined along
+// with the error. Servers without a usable alternate address return
+// ErrBehaviorDiscoveryUnsupported.
 func (c *Client) BehaviorTest() (*NATBehavior, error) {
+	c.ensureLogger()
 	if c.serverAddr == "" {
 		c.SetServerAddr(DefaultServerAddr)
 	}
@@ -138,22 +160,18 @@ func (c *Client) BehaviorTest() (*NATBehavior, error) {
 	// create a connection and close it at the end.
 	conn := c.conn
 	if conn == nil {
-		var laddr *net.UDPAddr
-		if c.localPort != 0  || c.localIP != "" {
-			var address = fmt.Sprintf("%s:%d", c.localIP, c.localPort)
-
-			laddr, err = net.ResolveUDPAddr("udp", address)
-			if err != nil {
-				return nil, err
-			}
-
-			c.logger.Debugln("Local listen address: " + address)
+		laddr, err := c.resolveLocalAddr()
+		if err != nil {
+			return nil, err
+		}
+		if laddr != nil {
+			c.logger.Debugln("Local listen address: " + laddr.String())
 		}
 		conn, err = net.ListenUDP("udp", laddr)
 		if err != nil {
 			return nil, err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 	}
 	return c.behaviorTest(conn, serverUDPAddr)
 }
@@ -161,6 +179,7 @@ func (c *Client) BehaviorTest() (*NATBehavior, error) {
 // Keepalive sends and receives a bind request, which ensures the mapping stays open
 // Only applicable when client was created with a connection.
 func (c *Client) Keepalive() (*Host, error) {
+	c.ensureLogger()
 	if c.conn == nil {
 		return nil, errors.New("no connection available")
 	}
@@ -180,4 +199,12 @@ func (c *Client) Keepalive() (*Host, error) {
 		return nil, errors.New("failed to contact")
 	}
 	return resp.mappedAddr, nil
+}
+
+func (c *Client) resolveLocalAddr() (*net.UDPAddr, error) {
+	if c.localPort == 0 && c.localIP == "" {
+		return nil, nil
+	}
+	address := net.JoinHostPort(c.localIP, strconv.Itoa(c.localPort))
+	return net.ResolveUDPAddr("udp", address)
 }

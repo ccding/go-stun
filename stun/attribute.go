@@ -16,36 +16,59 @@ package stun
 
 import (
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
+	"math"
 	"net"
 )
 
 type attribute struct {
-	types  uint16
-	length uint16
-	value  []byte
+	types   uint16
+	length  uint16
+	value   []byte
+	padding []byte
 }
 
-func newAttribute(types uint16, value []byte) *attribute {
+// A STUN message body has a uint16 length and must be a multiple of four, so
+// its largest representable size is 65,532 bytes. An attribute value must
+// leave four of those bytes for its type and length fields.
+const maxAttributeValueLength = 1<<16 - 8
+
+var (
+	errAttributeTooLarge = errors.New("stun: attribute value exceeds maximum STUN message size")
+	errPacketTooLarge    = errors.New("stun: packet attributes exceed maximum STUN message size")
+)
+
+// newAttribute copies value into a wire-representable STUN attribute.
+func newAttribute(types uint16, value []byte) (*attribute, error) {
+	if len(value) > maxAttributeValueLength {
+		return nil, errAttributeTooLarge
+	}
 	att := new(attribute)
 	att.types = types
-	att.value = padding(value)
-	att.length = uint16(len(att.value))
-	return att
+	att.value = append([]byte(nil), value...)
+	att.length = uint16(len(value))
+	att.padding = make([]byte, align(len(value))-len(value))
+	return att, nil
 }
 
-func newFingerprintAttribute(packet *packet) *attribute {
-	crc := crc32.ChecksumIEEE(packet.bytes()) ^ fingerprint
+func newFingerprintAttribute(packet *packet) (*attribute, error) {
+	if int(packet.length)+8 > math.MaxUint16 {
+		return nil, errPacketTooLarge
+	}
+	packetBytes := packet.bytes()
+	binary.BigEndian.PutUint16(packetBytes[2:4], packet.length+8)
+	crc := crc32.ChecksumIEEE(packetBytes) ^ fingerprint
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, crc)
 	return newAttribute(attributeFingerprint, buf)
 }
 
-func newSoftwareAttribute(name string) *attribute {
+func newSoftwareAttribute(name string) (*attribute, error) {
 	return newAttribute(attributeSoftware, []byte(name))
 }
 
-func newChangeReqAttribute(changeIP bool, changePort bool) *attribute {
+func newChangeReqAttribute(changeIP bool, changePort bool) (*attribute, error) {
 	value := make([]byte, 4)
 	if changeIP {
 		value[3] |= 0x04
@@ -56,21 +79,37 @@ func newChangeReqAttribute(changeIP bool, changePort bool) *attribute {
 	return newAttribute(attributeChangeRequest, value)
 }
 
-//      0                   1                   2                   3
-//      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//     |x x x x x x x x|    Family     |         X-Port                |
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//     |                X-Address (Variable)
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	0                   1                   2                   3
+//	0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 //
-//             Figure 6: Format of XOR-MAPPED-ADDRESS Attribute
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |x x x x x x x x|    Family     |         X-Port                |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                X-Address (Variable)
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//
+//	Figure 6: Format of XOR-MAPPED-ADDRESS Attribute
 func (v *attribute) xorAddr(transID []byte) *Host {
+	if len(transID) != 16 || (len(v.value) != 8 && len(v.value) != 20) {
+		return nil
+	}
+	family := uint16(v.value[1])
+	switch family {
+	case attributeFamilyIPv4:
+		if len(v.value) != 8 {
+			return nil
+		}
+	case attributeFamilyIPV6:
+		if len(v.value) != 20 {
+			return nil
+		}
+	default:
+		return nil
+	}
 	xorIP := make([]byte, 16)
 	for i := 0; i < len(v.value)-4; i++ {
 		xorIP[i] = v.value[i+4] ^ transID[i]
 	}
-	family := uint16(v.value[1])
 	port := binary.BigEndian.Uint16(v.value[2:4])
 	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
 	if family == attributeFamilyIPv4 {
@@ -80,25 +119,42 @@ func (v *attribute) xorAddr(transID []byte) *Host {
 	return &Host{family, net.IP(xorIP).String(), port ^ x}
 }
 
-//       0                   1                   2                   3
-//       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//      |0 0 0 0 0 0 0 0|    Family     |           Port                |
-//      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//      |                                                               |
-//      |                 Address (32 bits or 128 bits)                 |
-//      |                                                               |
-//      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	0                   1                   2                   3
+//	0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 //
-//               Figure 5: Format of MAPPED-ADDRESS Attribute
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |0 0 0 0 0 0 0 0|    Family     |           Port                |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                                                               |
+// |                 Address (32 bits or 128 bits)                 |
+// |                                                               |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//
+//	Figure 5: Format of MAPPED-ADDRESS Attribute
 func (v *attribute) rawAddr() *Host {
+	if len(v.value) != 8 && len(v.value) != 20 {
+		return nil
+	}
 	host := new(Host)
 	host.family = uint16(v.value[1])
+	switch host.family {
+	case attributeFamilyIPv4:
+		if len(v.value) != 8 {
+			return nil
+		}
+	case attributeFamilyIPV6:
+		if len(v.value) != 20 {
+			return nil
+		}
+	default:
+		return nil
+	}
 	host.port = binary.BigEndian.Uint16(v.value[2:4])
 	// Truncate if IPv4, otherwise net.IP sometimes renders it as an IPv6 address.
 	if host.family == attributeFamilyIPv4 {
-		v.value = v.value[:8]
+		host.ip = net.IP(v.value[4:8]).String()
+	} else {
+		host.ip = net.IP(v.value[4:20]).String()
 	}
-	host.ip = net.IP(v.value[4:]).String()
 	return host
 }
