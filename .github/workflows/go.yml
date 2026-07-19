@@ -70,8 +70,7 @@ jobs:
         shell: bash
         run: |
           go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}"
-          # Preserve legacy error wording and intentionally reserved RFC constants.
-          staticcheck -checks="all,-ST1005,-U1000" ./...
+          staticcheck -checks="all" ./...
 
   test:
     name: Test (${{ matrix.os }}, Go ${{ matrix.go }})
@@ -151,9 +150,10 @@ jobs:
           }'
 
       - name: Upload coverage reports
+        if: ${{ always() && hashFiles('coverage.out') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: coverage-${{ github.sha }}
+          name: coverage-${{ github.sha }}-attempt-${{ github.run_attempt }}
           path: |
             coverage.out
             coverage.txt
@@ -213,14 +213,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          check-latest: true
+          cache: false
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@f52b05f4acaaa234e44466e66d29050e135ea9ef # v4.36.0
         with:
           languages: go
           queries: security-extended
+          build-mode: manual
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@f52b05f4acaaa234e44466e66d29050e135ea9ef # v4.36.0
+      - name: Build for CodeQL
+        run: go build -mod=readonly ./...
 
       - name: Analyze
         uses: github/codeql-action/analyze@f52b05f4acaaa234e44466e66d29050e135ea9ef # v4.36.0
@@ -272,10 +280,13 @@ jobs:
             CGO_ENABLED=0 GOOS="$target_os" GOARCH="$target_arch" \
               go build -mod=readonly -trimpath -ldflags="-s -w" \
               -o "${output_dir}/go-stun${extension}" .
+            cp LICENSE README.md "$output_dir/"
             if [[ "$target_os" == "windows" ]]; then
-              (cd "$output_dir" && zip -q "../../dist/go-stun-${target_os}-${target_arch}.zip" "go-stun.exe")
+              (cd "$output_dir" && zip -q "../../dist/go-stun-${target_os}-${target_arch}.zip" \
+                "go-stun.exe" LICENSE README.md)
             else
-              tar -C "$output_dir" -czf "dist/go-stun-${target_os}-${target_arch}.tar.gz" go-stun
+              tar -C "$output_dir" -czf "dist/go-stun-${target_os}-${target_arch}.tar.gz" \
+                go-stun LICENSE README.md
             fi
           done
           (cd dist && sha256sum go-stun-* > SHA256SUMS)
@@ -283,7 +294,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: go-stun-${{ github.sha }}
+          name: go-stun-${{ github.sha }}-attempt-${{ github.run_attempt }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
