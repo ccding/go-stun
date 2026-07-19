@@ -22,6 +22,7 @@ import (
 	"hash/crc32"
 	"math"
 	"strings"
+	"unicode"
 )
 
 type packet struct {
@@ -185,14 +186,24 @@ func (v *packet) getAttributeBeforeIntegrity(types uint16) *attribute {
 }
 
 func (v *packet) validateBindingResponseAttributes() error {
+	// XOR-MAPPED-ADDRESS validation applies only to Binding success responses.
+	// If a server sends both the standard and old experimental forms, process
+	// the standard form and ignore the experimental one, matching
+	// getXorMappedAddr.
+	if v.types == typeBindingResponse {
+		xorMapped := v.getAttributeBeforeIntegrity(attributeXorMappedAddress)
+		if xorMapped == nil {
+			xorMapped = v.getAttributeBeforeIntegrity(attributeXorMappedAddressExp)
+		}
+		if xorMapped != nil && xorMapped.xorAddr(v.transID) == nil {
+			return errors.New("binding response has invalid XOR-MAPPED-ADDRESS")
+		}
+	}
+
 	for i := range v.attributes {
 		a := &v.attributes[i]
 		if a.types == attributeMessageIntegrity && a.length != 20 {
 			return errors.New("binding response has invalid MESSAGE-INTEGRITY")
-		}
-		if (a.types == attributeXorMappedAddress || a.types == attributeXorMappedAddressExp) &&
-			a.xorAddr(v.transID) == nil {
-			return errors.New("binding response has invalid XOR-MAPPED-ADDRESS")
 		}
 		if a.types < 0x8000 && !isKnownRequiredAttribute(a.types) {
 			return fmt.Errorf("binding response contains unknown required attribute %#04x", a.types)
@@ -221,8 +232,16 @@ func (v *packet) bindingError() error {
 	// RFC 3489 includes space padding in the ERROR-CODE attribute's declared
 	// length. Preserve the useful code even when a server sends malformed UTF-8
 	// or an overlong reason; those are sender errors, not structural ambiguity.
+	// Replace terminal-control characters because callers commonly print the
+	// resulting error directly.
 	reason := strings.TrimRight(string(a.value[4:]), " ")
 	reason = strings.ToValidUTF8(reason, "\uFFFD")
+	reason = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return '\uFFFD'
+		}
+		return r
+	}, reason)
 	runes := []rune(reason)
 	if len(runes) > 127 {
 		reason = string(runes[:127])

@@ -114,6 +114,10 @@ func (natBhType BehaviorType) String() string {
 // NormalType returns the normal NAT type of the NatBehavior.
 func (natBehavior NATBehavior) NormalType() string {
 	if natBehavior.NoTranslation {
+		switch natBehavior.FilteringType {
+		case BehaviorTypeAddr, BehaviorTypeAddrAndPort:
+			return SymmetricUDPFirewall.String()
+		}
 		return "Open Internet (no NAT)"
 	}
 	if s, ok := natNormalTypeStr[natBehavior]; ok {

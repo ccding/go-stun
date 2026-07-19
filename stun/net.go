@@ -102,7 +102,7 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 				continue
 			}
 			if p.types != typeBindingResponse && p.types != typeBindingErrorResponse {
-				c.logger.Debugf("Discard response from %v: unexpected message type %#04x", raddr, p.types)
+				c.logger.Debugf("Discard response from %v: unexpected message type %#06x", raddr, p.types)
 				continue
 			}
 			c.logger.Info("\n" + hex.Dump(packetBytes[0:length]))

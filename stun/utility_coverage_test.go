@@ -120,6 +120,32 @@ func TestUtilityCoverageStringMethods(t *testing.T) {
 	}
 }
 
+func TestNormalTypeWithoutTranslation(t *testing.T) {
+	tests := []struct {
+		name      string
+		filtering BehaviorType
+		want      string
+	}{
+		{name: "unknown filtering", filtering: BehaviorTypeUnknown, want: "Open Internet (no NAT)"},
+		{name: "endpoint-independent filtering", filtering: BehaviorTypeEndpoint, want: "Open Internet (no NAT)"},
+		{name: "address-dependent filtering", filtering: BehaviorTypeAddr, want: "Symmetric UDP firewall"},
+		{name: "address-and-port-dependent filtering", filtering: BehaviorTypeAddrAndPort, want: "Symmetric UDP firewall"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			behavior := NATBehavior{
+				MappingType:   BehaviorTypeEndpoint,
+				FilteringType: tt.filtering,
+				NoTranslation: true,
+			}
+			if got := behavior.NormalType(); got != tt.want {
+				t.Fatalf("NormalType() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUtilityCoverageExportedWrapperInputErrors(t *testing.T) {
 	if host, err := NewClient().Keepalive(); err == nil || host != nil {
 		t.Fatalf("Keepalive() without a connection = %#v, %v", host, err)

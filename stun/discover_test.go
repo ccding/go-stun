@@ -73,16 +73,17 @@ type behaviorPacketConn struct {
 	omitMappedAt       int
 	initialMappedLocal bool
 
-	respondToChangeBoth    bool
-	changeBothFromSameAddr bool
-	silentChangePort       bool
-	changePortFromOtherIP  bool
-	uniformMapping         bool
-	portSensitiveMapping   bool
-	omitOtherAddress       bool
-	alternateUnreachable   bool
-	alternateSameIP        bool
-	alternateSamePort      bool
+	respondToChangeBoth       bool
+	changeBothFromSameAddr    bool
+	silentChangePort          bool
+	changePortFromOtherIP     bool
+	mappingProbeFromWrongAddr bool
+	uniformMapping            bool
+	portSensitiveMapping      bool
+	omitOtherAddress          bool
+	alternateUnreachable      bool
+	alternateSameIP           bool
+	alternateSamePort         bool
 }
 
 func newBehaviorPacketConn() *behaviorPacketConn {
@@ -142,6 +143,9 @@ func (c *behaviorPacketConn) WriteTo(wire []byte, destination net.Addr) (int, er
 	}
 	if change == 0x06 && !c.changeBothFromSameAddr {
 		responseAddr = &net.UDPAddr{IP: net.ParseIP("203.0.113.2"), Port: 3479}
+	}
+	if c.mappingProbeFromWrongAddr && change == 0 && destinationAddr.IP.Equal(net.ParseIP("203.0.113.2")) {
+		responseAddr.IP = net.ParseIP("203.0.113.3")
 	}
 	if c.alternateUnreachable && change == 0 && destinationAddr.IP.Equal(net.ParseIP("203.0.113.2")) {
 		return len(wire), nil
@@ -234,7 +238,7 @@ func TestBehaviorTestValidatesMappedAddressAtEveryStage(t *testing.T) {
 	}
 }
 
-func TestBehaviorTestHandlesOpenInternet(t *testing.T) {
+func TestBehaviorTestHandlesFilteredNoTranslation(t *testing.T) {
 	conn := newBehaviorPacketConn()
 	conn.initialMappedLocal = true
 	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
@@ -245,11 +249,31 @@ func TestBehaviorTestHandlesOpenInternet(t *testing.T) {
 	if behavior.MappingType != BehaviorTypeEndpoint || behavior.FilteringType != BehaviorTypeAddr || !behavior.NoTranslation {
 		t.Fatalf("behavior = %#v", behavior)
 	}
-	if got := behavior.NormalType(); got != "Open Internet (no NAT)" {
+	if got := behavior.NormalType(); got != "Symmetric UDP firewall" {
 		t.Fatalf("NormalType() = %q", got)
 	}
 	if len(conn.probes) != 3 {
 		t.Fatalf("open-internet test sent mapping probes: %#v", conn.probes)
+	}
+}
+
+func TestBehaviorTestHandlesOpenInternet(t *testing.T) {
+	conn := newBehaviorPacketConn()
+	conn.initialMappedLocal = true
+	conn.respondToChangeBoth = true
+	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
+	behavior, err := NewClient().behaviorTest(conn, server)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if behavior.MappingType != BehaviorTypeEndpoint || behavior.FilteringType != BehaviorTypeEndpoint || !behavior.NoTranslation {
+		t.Fatalf("behavior = %#v", behavior)
+	}
+	if got := behavior.NormalType(); got != "Open Internet (no NAT)" {
+		t.Fatalf("NormalType() = %q", got)
+	}
+	if len(conn.probes) != 2 {
+		t.Fatalf("open-internet test sent unexpected probes: %#v", conn.probes)
 	}
 }
 
@@ -300,11 +324,35 @@ func TestBehaviorTestRejectsChangePortResponseFromWrongIP(t *testing.T) {
 	conn := newBehaviorPacketConn()
 	conn.changePortFromOtherIP = true
 	behavior, err := NewClient().behaviorTest(conn, &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478})
-	if err == nil {
-		t.Fatal("behaviorTest accepted a change-port response from the wrong IP")
+	if err == nil || err.Error() != "server error: response IP/port" {
+		t.Fatalf("behaviorTest error = %v", err)
 	}
 	if behavior == nil {
 		t.Fatal("behaviorTest discarded the partial result")
+	}
+}
+
+func TestBehaviorTestRejectsChangeBothResponseFromSameAddress(t *testing.T) {
+	conn := newBehaviorPacketConn()
+	conn.changeBothFromSameAddr = true
+	behavior, err := NewClient().behaviorTest(conn, &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478})
+	if err == nil || err.Error() != "server error: response IP/port" {
+		t.Fatalf("behaviorTest error = %v", err)
+	}
+	if behavior == nil {
+		t.Fatal("behaviorTest discarded the partial result")
+	}
+}
+
+func TestBehaviorTestRejectsMappingResponseFromWrongAddress(t *testing.T) {
+	conn := newBehaviorPacketConn()
+	conn.mappingProbeFromWrongAddr = true
+	behavior, err := NewClient().behaviorTest(conn, &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478})
+	if err == nil || err.Error() != "server error: response IP/port" {
+		t.Fatalf("behaviorTest error = %v", err)
+	}
+	if behavior == nil || behavior.MappingType != BehaviorTypeUnknown || behavior.FilteringType != BehaviorTypeAddr {
+		t.Fatalf("partial behavior = %#v", behavior)
 	}
 }
 
@@ -359,6 +407,42 @@ func TestDiscoverClassificationMatrix(t *testing.T) {
 				t.Fatalf("discover = %v, %#v, %v; want %v and mapped host", nat, host, err, tt.want)
 			}
 		})
+	}
+}
+
+func TestDiscoverTreatsUnusableAlternateAddressAsUnavailable(t *testing.T) {
+	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
+	for _, tt := range []struct {
+		name      string
+		configure func(*behaviorPacketConn)
+	}{
+		{"same IP", func(c *behaviorPacketConn) { c.alternateSameIP = true }},
+		{"same port", func(c *behaviorPacketConn) { c.alternateSamePort = true }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			conn := newBehaviorPacketConn()
+			tt.configure(conn)
+			nat, host, err := NewClient().discover(conn, server)
+			if err != nil || nat != NATUnknown || host == nil || host.String() != "192.0.2.20:40000" {
+				t.Fatalf("discover = %v, %#v, %v; want NATUnknown and mapped host", nat, host, err)
+			}
+			if len(conn.probes) != 1 {
+				t.Fatalf("discover sent probes to unusable alternate: %#v", conn.probes)
+			}
+		})
+	}
+}
+
+func TestDiscoverRejectsChangeBothResponseFromSameAddress(t *testing.T) {
+	conn := newBehaviorPacketConn()
+	conn.changeBothFromSameAddr = true
+	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
+	nat, host, err := NewClient().discover(conn, server)
+	if err == nil || err.Error() != "server error: response IP/port" {
+		t.Fatalf("discover error = %v", err)
+	}
+	if nat != NATError || host == nil || host.String() != "192.0.2.20:40000" {
+		t.Fatalf("discover = %v, %#v, %v", nat, host, err)
 	}
 }
 

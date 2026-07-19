@@ -81,6 +81,9 @@ func runBehaviorTest(c *stun.Client) error {
 func writeBehaviorTestResult(w io.Writer, natBehavior *stun.NATBehavior, err error) error {
 	if err != nil {
 		if errors.Is(err, stun.ErrBehaviorDiscoveryUnsupported) {
+			if writeErr := writePartialBehaviorTestResult(w, natBehavior); writeErr != nil {
+				return writeErr
+			}
 			_, writeErr := fmt.Fprintln(w, err)
 			return writeErr
 		}

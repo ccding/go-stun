@@ -15,12 +15,14 @@
 package stun
 
 import (
+	"encoding/binary"
 	"errors"
 	"net"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 )
 
 type packetRead struct {
@@ -129,6 +131,16 @@ func mappedAddressAttribute(ip net.IP, port uint16) *attribute {
 	value := []byte{0, attributeFamilyIPv4, byte(port >> 8), byte(port)}
 	value = append(value, ip...)
 	return newAttribute(attributeMappedAddress, value)
+}
+
+func xorMappedAddressAttribute(types uint16, transactionID []byte, ip net.IP, port uint16) *attribute {
+	ip = ip.To4()
+	xorPort := port ^ binary.BigEndian.Uint16(transactionID[:2])
+	value := []byte{0, attributeFamilyIPv4, byte(xorPort >> 8), byte(xorPort)}
+	for i := range ip {
+		value = append(value, ip[i]^transactionID[i])
+	}
+	return newAttribute(types, value)
 }
 
 func errorCodeAttribute(code int, reason string) *attribute {
@@ -264,6 +276,19 @@ func TestSendReportsWriteFailures(t *testing.T) {
 				t.Fatal("send succeeded")
 			}
 		})
+	}
+}
+
+func TestSendReturnsNonTimeoutReadError(t *testing.T) {
+	p, err := newPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("read failed")
+	conn := &scriptedPacketConn{reads: []packetRead{{err: want}}}
+	resp, err := NewClient().send(p, conn, &net.UDPAddr{})
+	if resp != nil || !errors.Is(err, want) {
+		t.Fatalf("send returned response=%#v error=%v, want %v", resp, err, want)
 	}
 }
 
@@ -406,6 +431,7 @@ func TestSendSanitizesBindingErrorReasons(t *testing.T) {
 	}{
 		{name: "RFC 3489 space padding", reason: []byte("Unknown Attribute   "), want: "Unknown Attribute"},
 		{name: "invalid UTF-8", reason: []byte{'b', 'a', 'd', 0xff, 'r', 'e', 'a', 's', 'o', 'n'}, want: "bad\uFFFDreason"},
+		{name: "terminal controls", reason: []byte("\x1b[31mforged\nline\u009b"), want: "\uFFFD[31mforged\uFFFDline\uFFFD"},
 		{name: "truncate by rune", reason: []byte(strings.Repeat("界", 130)), want: strings.Repeat("界", 127)},
 	}
 
@@ -433,25 +459,107 @@ func TestSendSanitizesBindingErrorReasons(t *testing.T) {
 			if serverErr.Code != 420 || serverErr.Reason != tt.want {
 				t.Fatalf("ServerError = %#v, want code 420 reason %q", serverErr, tt.want)
 			}
+			for _, value := range []string{serverErr.Reason, serverErr.Error()} {
+				for _, r := range value {
+					if unicode.IsControl(r) {
+						t.Fatalf("sanitized error contains control rune %U: %q", r, value)
+					}
+				}
+			}
 		})
 	}
 }
 
 func TestSendRejectsMalformedXorMappedAddressInsteadOfFallingBack(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		types uint16
+	}{
+		{name: "standard", types: attributeXorMappedAddress},
+		{name: "experimental", types: attributeXorMappedAddressExp},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			request, err := newPacket()
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.types = typeBindingRequest
+			response := bindingPacket(typeBindingResponse, request.transID)
+			response.addAttribute(*newAttribute(tt.types, make([]byte, 7)))
+			response.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.20"), 40000))
+			server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
+			conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
+
+			resp, err := NewClient().send(request, conn, server)
+			if err == nil || resp != nil {
+				t.Fatalf("send returned response=%#v error=%v", resp, err)
+			}
+			if !strings.Contains(err.Error(), "invalid XOR-MAPPED-ADDRESS") {
+				t.Fatalf("send error = %q", err)
+			}
+		})
+	}
+}
+
+func TestNewResponseDoesNotFallbackFromMalformedXorMappedAddress(t *testing.T) {
+	pkt := bindingPacket(typeBindingResponse, make([]byte, 16))
+	pkt.addAttribute(*newAttribute(attributeXorMappedAddress, make([]byte, 7)))
+	pkt.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.20"), 40000))
+	resp := newResponse(pkt, &scriptedPacketConn{})
+	if resp.mappedAddr != nil {
+		t.Fatalf("newResponse fell back to MAPPED-ADDRESS: %#v", resp.mappedAddr)
+	}
+}
+
+func TestSendIgnoresMalformedExperimentalXorWhenStandardIsValid(t *testing.T) {
+	for _, experimentalFirst := range []bool{false, true} {
+		name := "standard first"
+		if experimentalFirst {
+			name = "experimental first"
+		}
+		t.Run(name, func(t *testing.T) {
+			request, err := newPacket()
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.types = typeBindingRequest
+			response := bindingPacket(typeBindingResponse, request.transID)
+			standard := xorMappedAddressAttribute(attributeXorMappedAddress, request.transID, net.ParseIP("192.0.2.20"), 40000)
+			experimental := newAttribute(attributeXorMappedAddressExp, make([]byte, 7))
+			if experimentalFirst {
+				response.addAttribute(*experimental)
+				response.addAttribute(*standard)
+			} else {
+				response.addAttribute(*standard)
+				response.addAttribute(*experimental)
+			}
+			server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
+			conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
+
+			resp, err := NewClient().send(request, conn, server)
+			if err != nil || resp == nil || resp.mappedAddr == nil || resp.mappedAddr.String() != "192.0.2.20:40000" {
+				t.Fatalf("send returned response=%#v error=%v", resp, err)
+			}
+		})
+	}
+}
+
+func TestSendReturnsServerErrorDespiteMalformedXorMappedAddress(t *testing.T) {
 	request, err := newPacket()
 	if err != nil {
 		t.Fatal(err)
 	}
 	request.types = typeBindingRequest
-	response := bindingPacket(typeBindingResponse, request.transID)
+	response := bindingPacket(typeBindingErrorResponse, request.transID)
 	response.addAttribute(*newAttribute(attributeXorMappedAddress, make([]byte, 7)))
-	response.addAttribute(*mappedAddressAttribute(net.ParseIP("192.0.2.20"), 40000))
+	response.addAttribute(*errorCodeAttribute(500, "Server Error"))
 	server := &net.UDPAddr{IP: net.ParseIP("198.51.100.1"), Port: 3478}
 	conn := &scriptedPacketConn{reads: []packetRead{{data: response.bytes(), addr: server}}}
 
 	resp, err := NewClient().send(request, conn, server)
-	if err == nil || resp != nil {
-		t.Fatalf("send returned response=%#v error=%v", resp, err)
+	var serverErr *ServerError
+	if resp != nil || !errors.As(err, &serverErr) || serverErr.Code != 500 || serverErr.Reason != "Server Error" {
+		t.Fatalf("send returned response=%#v error=%#v", resp, err)
 	}
 }
 

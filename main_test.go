@@ -33,6 +33,19 @@ func TestWriteBehaviorTestResultTreatsUnsupportedServerAsSuccess(t *testing.T) {
 	}
 }
 
+func TestWriteBehaviorTestResultPreservesUnsupportedNoTranslation(t *testing.T) {
+	var output bytes.Buffer
+	behavior := &stun.NATBehavior{NoTranslation: true}
+	if err := writeBehaviorTestResult(&output, behavior, stun.ErrBehaviorDiscoveryUnsupported); err != nil {
+		t.Fatal(err)
+	}
+	want := "   Normal NAT Type: Open Internet (no NAT)\n" +
+		stun.ErrBehaviorDiscoveryUnsupported.Error() + "\n"
+	if got := output.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
 func TestWriteBehaviorTestResultReportsOpenInternet(t *testing.T) {
 	var output bytes.Buffer
 	behavior := &stun.NATBehavior{
@@ -65,5 +78,33 @@ func TestWriteBehaviorTestResultPreservesPartialBehavior(t *testing.T) {
 	if got := output.String(); !strings.Contains(got, "Filtering Behavior: AddressDependent") ||
 		strings.Contains(got, "Mapping Behavior:") {
 		t.Fatalf("partial output = %q", got)
+	}
+}
+
+type failingWriter struct {
+	err error
+}
+
+func (w failingWriter) Write([]byte) (int, error) {
+	return 0, w.err
+}
+
+func TestWriteBehaviorTestResultReturnsPartialWriteError(t *testing.T) {
+	want := errors.New("write failed")
+	behavior := &stun.NATBehavior{NoTranslation: true}
+	got := writeBehaviorTestResult(failingWriter{err: want}, behavior, stun.ErrBehaviorDiscoveryUnsupported)
+	if !errors.Is(got, want) {
+		t.Fatalf("error = %v, want %v", got, want)
+	}
+}
+
+func TestWritePartialBehaviorTestResultReportsKnownMapping(t *testing.T) {
+	var output bytes.Buffer
+	behavior := &stun.NATBehavior{MappingType: stun.BehaviorTypeEndpoint}
+	if err := writePartialBehaviorTestResult(&output, behavior); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := output.String(), "  Mapping Behavior: EndpointIndependent\n"; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
