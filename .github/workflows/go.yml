@@ -1,40 +1,265 @@
-name: Go
+name: Go CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
+    tags: ["v*"]
   pull_request:
-    branches: [ master ]
+    branches: [master]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}"
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.26.x"
+  STATICCHECK_VERSION: "v0.7.0"
+  GOVULNCHECK_VERSION: "v1.6.0"
+  # Protect the current baseline; raise this as more paths gain tests.
+  MINIMUM_COVERAGE: "84.0"
 
 jobs:
+  quality:
+    name: Format, modules, vet, and static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          check-latest: true
+          cache-dependency-path: go.mod
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          unformatted="$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"
+          if [[ -n "$unformatted" ]]; then
+            printf '%s\n' "The following Go files need formatting:" "$unformatted"
+            exit 1
+          fi
+
+      - name: Check module metadata
+        shell: bash
+        run: |
+          go mod tidy
+          go mod verify
+          module_changes="$(git status --porcelain --untracked-files=all -- go.mod go.sum)"
+          if [[ -n "$module_changes" ]]; then
+            printf '%s\n' "go mod tidy changed module files:" "$module_changes"
+            git diff -- go.mod go.sum
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet -mod=readonly ./...
+
+      - name: Run Staticcheck
+        shell: bash
+        run: |
+          go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}"
+          staticcheck -checks="all" ./...
+
+  test:
+    name: Test (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            go: "1.14.x"
+          - os: ubuntu-latest
+            go: "1.25.x"
+          - os: macos-latest
+            go: "1.26.x"
+          - os: windows-latest
+            go: "1.26.x"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "${{ matrix.go }}"
+          check-latest: true
+          cache-dependency-path: go.mod
+
+      - name: Run tests
+        run: go test -mod=readonly -count=1 -timeout=2m ./...
+
+  coverage:
+    name: Race detector and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          check-latest: true
+          cache-dependency-path: go.mod
+
+      - name: Run race-enabled tests
+        run: >-
+          go test
+          -mod=readonly
+          -v
+          -count=1
+          -race
+          -shuffle=on
+          -timeout=2m
+          -covermode=atomic
+          -coverprofile=coverage.out
+          ./...
+
+      - name: Generate and enforce coverage report
+        shell: bash
+        run: |
+          go tool cover -func=coverage.out | tee coverage.txt
+          go tool cover -html=coverage.out -o coverage.html
+          coverage_percent="$(awk '/^total:/ {gsub(/%/, "", $3); print $3}' coverage.txt)"
+          printf '### Coverage\n\nTotal statement coverage: %s%% (minimum %s%%)\n' \
+            "$coverage_percent" "$MINIMUM_COVERAGE" >> "$GITHUB_STEP_SUMMARY"
+          awk -v actual="$coverage_percent" -v minimum="$MINIMUM_COVERAGE" 'BEGIN {
+            if ((actual + 0) < (minimum + 0)) {
+              printf "coverage %.1f%% is below the required %.1f%%\n", actual, minimum
+              exit 1
+            }
+          }'
+
+      - name: Upload coverage reports
+        if: ${{ always() && hashFiles('coverage.out') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: |
+            coverage.out
+            coverage.txt
+            coverage.html
+          if-no-files-found: error
+          retention-days: 14
+
+  security:
+    name: Go vulnerability database
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          check-latest: true
+          cache-dependency-path: go.mod
+
+      - name: Run govulncheck
+        shell: bash
+        run: |
+          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+          govulncheck -test ./...
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
 
   build:
-    name: Build
+    name: Cross-platform build artifacts
+    needs: [quality, test, coverage, security]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v2
-      with:
-        go-version: ^1.14
-      id: go
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          check-latest: true
+          cache-dependency-path: go.mod
 
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
+      - name: Build and package supported targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          targets=(
+            linux/amd64
+            linux/arm64
+            linux/386
+            linux/ppc64le
+            darwin/amd64
+            darwin/arm64
+            windows/amd64
+            freebsd/amd64
+          )
+          mkdir -p build dist
+          for target in "${targets[@]}"; do
+            target_os="${target%/*}"
+            target_arch="${target#*/}"
+            output_dir="build/${target_os}-${target_arch}"
+            extension=""
+            if [[ "$target_os" == "windows" ]]; then
+              extension=".exe"
+            fi
+            mkdir -p "$output_dir"
+            CGO_ENABLED=0 GOOS="$target_os" GOARCH="$target_arch" \
+              go build -mod=readonly -trimpath -ldflags="-s -w" \
+              -o "${output_dir}/go-stun${extension}" .
+            cp LICENSE README.md "$output_dir/"
+            if [[ "$target_os" == "windows" ]]; then
+              (cd "$output_dir" && zip -q "../../dist/go-stun-${target_os}-${target_arch}.zip" \
+                "go-stun.exe" LICENSE README.md)
+            else
+              tar -C "$output_dir" -czf "dist/go-stun-${target_os}-${target_arch}.tar.gz" \
+                go-stun LICENSE README.md
+            fi
+          done
+          (cd dist && sha256sum go-stun-* > SHA256SUMS)
 
-    - name: Get dependencies
-      run: |
-        go get -v -t -d ./...
-        if [ -f Gopkg.toml ]; then
-            curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-            dep ensure
-        fi
-
-    - name: Build
-      run: go build -v ./...
-
-    - name: Vet
-      run: go vet ./...
-
-    - name: Test
-      run: go test -v ./...
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: go-stun-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
