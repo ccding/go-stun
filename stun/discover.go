@@ -81,10 +81,13 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	changedAddr := resp.changedAddr
 	// mappedAddr is used as the return value, its IP is used for tests
 	mappedAddr := resp.mappedAddr
+	if mappedAddr == nil {
+		return NATError, nil, errors.New("server response has no mapped address")
+	}
 	// Make sure IP and port are not changed.
 	if resp.serverAddr.IP() != addr.IP.String() ||
 		resp.serverAddr.Port() != uint16(addr.Port) {
-		return NATError, mappedAddr, errors.New("Server error: response IP/port")
+		return NATError, mappedAddr, errors.New("server error: response IP/port")
 	}
 	// if changedAddr is not available, use otherAddr as changedAddr,
 	// which is updated in RFC 5780
@@ -93,7 +96,7 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	}
 	// changedAddr shall not be nil
 	if changedAddr == nil {
-		return NATError, mappedAddr, errors.New("Server error: no changed address")
+		return NATUnknown, mappedAddr, nil
 	}
 	// Perform test2 to see if the client can receive packet sent from
 	// another IP and port.
@@ -108,7 +111,7 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	if resp != nil &&
 		(resp.serverAddr.IP() == addr.IP.String() ||
 			resp.serverAddr.Port() == uint16(addr.Port)) {
-		return NATError, mappedAddr, errors.New("Server error: response IP/port")
+		return NATError, mappedAddr, errors.New("server error: response IP/port")
 	}
 	if identical {
 		if resp == nil {
@@ -140,7 +143,7 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	// Make sure IP/port is not changed.
 	if resp.serverAddr.IP() != caddr.IP.String() ||
 		resp.serverAddr.Port() != uint16(caddr.Port) {
-		return NATError, mappedAddr, errors.New("Server error: response IP/port")
+		return NATError, mappedAddr, errors.New("server error: response IP/port")
 	}
 	if mappedAddr.IP() == resp.mappedAddr.IP() && mappedAddr.Port() == resp.mappedAddr.Port() {
 		// Perform test3 to see if the client can receive packet sent
@@ -158,7 +161,7 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 		// Make sure IP is not changed, and port is changed.
 		if resp.serverAddr.IP() != caddr.IP.String() ||
 			resp.serverAddr.Port() == uint16(caddr.Port) {
-			return NATError, mappedAddr, errors.New("Server error: response IP/port")
+			return NATError, mappedAddr, errors.New("server error: response IP/port")
 		}
 		return NATRestricted, mappedAddr, nil
 	}
@@ -175,24 +178,59 @@ func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehav
 	if err != nil {
 		return nil, err
 	}
-	// identical used to check if it is open Internet or not.
-	if resp1.identical {
-		return nil, errors.New("Not behind a NAT")
-	}
 	// use otherAddr or changedAddr
 	otherAddr := resp1.otherAddr
 	if otherAddr == nil {
 		if resp1.changedAddr != nil {
 			otherAddr = resp1.changedAddr
 		} else {
-			return nil, errors.New("Server error: no other address and changed address")
+			return nil, errors.New("server error: no other address and changed address")
 		}
 	}
 
-	// Test2   ->(IP2,port1)
-	// Perform test to see if mapping to the same IP and port when
-	// send to another IP.
-	c.logger.Debugln("Do Test2")
+	// Filtering Test II ->(IP1,port1)   (IP2,port2)->
+	// Filtering has to be tested before sending mapping probes to the
+	// alternate endpoint; those probes would otherwise create NAT state and
+	// could make filtering appear less restrictive than it is.
+	// Perform test to see if the client can receive packet sent from
+	// another IP and port.
+	c.logger.Debugln("Do Filtering Test II")
+	resp4, err := c.testChangeBoth(conn, addr)
+	if err != nil {
+		return natBehavior, err
+	}
+	if resp4 != nil {
+		natBehavior.FilteringType = BehaviorTypeEndpoint
+	}
+
+	// Filtering Test III ->(IP1,port1)   (IP1,port2)->
+	// Perform test to see if the client can receive packet sent from
+	// another port.
+	if natBehavior.FilteringType == BehaviorTypeUnknown {
+		c.logger.Debugln("Do Filtering Test III")
+		resp5, err := c.testChangePort(conn, addr)
+		if err != nil {
+			return natBehavior, err
+		}
+		if resp5 != nil {
+			natBehavior.FilteringType = BehaviorTypeAddr
+		} else {
+			natBehavior.FilteringType = BehaviorTypeAddrAndPort
+		}
+	}
+
+	// A matching local and mapped transport address means there is no
+	// translation. Its mapping behavior is effectively endpoint-independent;
+	// the filtering tests above still describe any firewall behavior.
+	if resp1.identical {
+		natBehavior.MappingType = BehaviorTypeEndpoint
+		return natBehavior, nil
+	}
+
+	// Mapping Test II ->(IP2,port1)
+	// Perform test to see if mapping to the same IP and port when sending to
+	// another IP.
+	c.logger.Debugln("Do Mapping Test II")
 	tmpAddr := &net.UDPAddr{IP: net.ParseIP(otherAddr.IP()), Port: addr.Port}
 	resp2, err := c.test(conn, tmpAddr)
 	if err != nil {
@@ -203,11 +241,11 @@ func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehav
 		natBehavior.MappingType = BehaviorTypeEndpoint
 	}
 
-	// Test3   ->(IP2,port2)
-	// Perform test to see if mapping to the same IP and port when
-	// send to another port.
+	// Mapping Test III ->(IP2,port2)
+	// Perform test to see if mapping to the same IP and port when sending to
+	// another port.
 	if natBehavior.MappingType == BehaviorTypeUnknown {
-		c.logger.Debugln("Do Test3")
+		c.logger.Debugln("Do Mapping Test III")
 		tmpAddr.Port = int(otherAddr.Port())
 		resp3, err := c.test(conn, tmpAddr)
 		if err != nil {
@@ -218,34 +256,6 @@ func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehav
 			natBehavior.MappingType = BehaviorTypeAddr
 		} else {
 			natBehavior.MappingType = BehaviorTypeAddrAndPort
-		}
-	}
-
-	// Test4   ->(IP1,port1)   (IP2,port2)->
-	// Perform test to see if the client can receive packet sent from
-	// another IP and port.
-	c.logger.Debugln("Do Test4")
-	resp4, err := c.testChangeBoth(conn, addr)
-	if err != nil {
-		return natBehavior, err
-	}
-	if resp4 != nil {
-		natBehavior.FilteringType = BehaviorTypeEndpoint
-	}
-
-	// Test5   ->(IP1,port1)   (IP1,port2)->
-	// Perform test to see if the client can receive packet sent from
-	// another port.
-	if natBehavior.FilteringType == BehaviorTypeUnknown {
-		c.logger.Debugln("Do Test5")
-		resp5, err := c.testChangePort(conn, addr)
-		if err != nil {
-			return natBehavior, err
-		}
-		if resp5 != nil {
-			natBehavior.FilteringType = BehaviorTypeAddr
-		} else {
-			natBehavior.FilteringType = BehaviorTypeAddrAndPort
 		}
 	}
 

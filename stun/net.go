@@ -26,7 +26,7 @@ const (
 	numRetransmit  = 9
 	defaultTimeout = 100
 	maxTimeout     = 1600
-	maxPacketSize  = 1024
+	maxPacketSize  = 64 * 1024
 )
 
 func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, changeIP bool, changePort bool) (*response, error) {
@@ -36,18 +36,10 @@ func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, changeIP boo
 		return nil, err
 	}
 	pkt.types = typeBindingRequest
-	attribute := newSoftwareAttribute(c.softwareName)
-	pkt.addAttribute(*attribute)
 	if changeIP || changePort {
-		attribute = newChangeReqAttribute(changeIP, changePort)
+		attribute := newChangeReqAttribute(changeIP, changePort)
 		pkt.addAttribute(*attribute)
 	}
-	// length of fingerprint attribute must be included into crc,
-	// so we add it before calculating crc, then subtract it after calculating crc.
-	pkt.length += 8
-	attribute = newFingerprintAttribute(pkt)
-	pkt.length -= 8
-	pkt.addAttribute(*attribute)
 	// Send packet.
 	return c.send(pkt, conn, addr)
 }
@@ -57,17 +49,18 @@ func (c *Client) sendBindingReq(conn net.PacketConn, addr net.Addr, changeIP boo
 // Retransmissions continue with intervals of 1.6s until a response is
 // received, or a total of 9 requests have been sent.
 func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*response, error) {
-	c.logger.Info("\n" + hex.Dump(pkt.bytes()))
+	wire := pkt.bytes()
+	c.logger.Info("\n" + hex.Dump(wire))
 	timeout := defaultTimeout
 	packetBytes := make([]byte, maxPacketSize)
 	for i := 0; i < numRetransmit; i++ {
 		// Send packet to the server.
-		length, err := conn.WriteTo(pkt.bytes(), addr)
+		length, err := conn.WriteTo(wire, addr)
 		if err != nil {
 			return nil, err
 		}
-		if length != len(pkt.bytes()) {
-			return nil, errors.New("Error in sending data")
+		if length != len(wire) {
+			return nil, errors.New("error in sending data")
 		}
 		err = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Millisecond))
 		if err != nil {
@@ -87,17 +80,37 @@ func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*respons
 			}
 			p, err := newPacketFromBytes(packetBytes[0:length])
 			if err != nil {
-				return nil, err
+				// A UDP socket can receive unrelated or malformed traffic. RFC 5389
+				// requires invalid STUN messages to be silently discarded.
+				continue
 			}
 			// If transId mismatches, keep reading until get a
 			// matched packet or timeout.
 			if !bytes.Equal(pkt.transID, p.transID) {
 				continue
 			}
+			if p.types != typeBindingResponse && p.types != typeBindingErrorResponse {
+				continue
+			}
 			c.logger.Info("\n" + hex.Dump(packetBytes[0:length]))
+			if err := p.validateBindingResponseAttributes(); err != nil {
+				return nil, err
+			}
+			if p.types == typeBindingErrorResponse {
+				return nil, p.bindingError()
+			}
 			resp := newResponse(p, conn)
+			if resp.mappedAddr == nil {
+				return nil, errors.New("binding success response has no valid mapped address")
+			}
+			if raddr == nil {
+				return nil, errors.New("binding response has no source address")
+			}
 			resp.serverAddr = newHostFromStr(raddr.String())
-			return resp, err
+			if resp.serverAddr == nil {
+				return nil, errors.New("binding response has an invalid source address")
+			}
+			return resp, nil
 		}
 	}
 	return nil, nil

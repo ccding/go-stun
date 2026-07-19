@@ -15,6 +15,11 @@
 package stun
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
+	"math/rand"
+	"net"
 	"testing"
 )
 
@@ -32,28 +37,326 @@ func TestNewPacketFromBytes(t *testing.T) {
 }
 
 func TestNewPacket(t *testing.T) {
-	_, err := newPacket()
+	p, err := newPacket()
 	if err != nil {
-		t.Errorf("newPacket error")
+		t.Fatal(err)
+	}
+	if len(p.transID) != 16 || binary.BigEndian.Uint32(p.transID[:4]) != magicCookie {
+		t.Fatalf("transaction ID = %x", p.transID)
 	}
 }
 
 func TestPacketAll(t *testing.T) {
 	p, err := newPacket()
 	if err != nil {
-		t.Errorf("newPacket error")
+		t.Fatal(err)
 	}
 	p.addAttribute(*newChangeReqAttribute(true, true))
 	p.addAttribute(*newSoftwareAttribute("aaa"))
 	p.addAttribute(*newFingerprintAttribute(p))
 	pkt, err := newPacketFromBytes(p.bytes())
 	if err != nil {
-		t.Errorf("newPacketFromBytes error")
+		t.Fatal(err)
 	}
-	if pkt.types != 0 {
-		t.Errorf("newPacketFromBytes error")
+	if pkt.types != 0 || pkt.length != 24 || len(pkt.attributes) != 3 {
+		t.Fatalf("unexpected packet: type=%#x length=%d attributes=%d", pkt.types, pkt.length, len(pkt.attributes))
 	}
-	if pkt.length < 20 {
-		t.Errorf("newPacketFromBytes error")
+	if got := pkt.bytes(); !bytes.Equal(got, p.bytes()) {
+		t.Fatalf("packet did not round trip\ngot  %x\nwant %x", got, p.bytes())
+	}
+}
+
+func TestPacketAcceptsRFC3489TransactionID(t *testing.T) {
+	wire := []byte{
+		0x01, 0x01, 0x00, 0x00,
+		0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80,
+		0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0, 0xf0, 0x00,
+	}
+	p, err := newPacketFromBytes(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.bytes(); !bytes.Equal(got, wire) {
+		t.Fatalf("RFC 3489 packet did not round trip\ngot  %x\nwant %x", got, wire)
+	}
+}
+
+func TestAttributeLengthExcludesPadding(t *testing.T) {
+	p, err := newPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.addAttribute(*newSoftwareAttribute("abc"))
+	wire := p.bytes()
+	if got := binary.BigEndian.Uint16(wire[22:24]); got != 3 {
+		t.Fatalf("attribute length = %d, want 3", got)
+	}
+	if got := binary.BigEndian.Uint16(wire[2:4]); got != 8 {
+		t.Fatalf("message length = %d, want 8", got)
+	}
+	if len(wire) != 28 || wire[27] != 0 {
+		t.Fatalf("attribute was not padded to a 4-byte boundary: %x", wire)
+	}
+}
+
+func TestPacketRejectsInvalidFraming(t *testing.T) {
+	tests := [][]byte{
+		append([]byte{0x40}, make([]byte, 19)...),
+		append([]byte{0, 1, 0, 4}, make([]byte, 16)...),
+		append([]byte{0, 1, 0, 2}, make([]byte, 18)...),
+	}
+	for _, wire := range tests {
+		if _, err := newPacketFromBytes(wire); err == nil {
+			t.Fatalf("accepted malformed packet: %x", wire)
+		}
+	}
+}
+
+func TestPacketRejectsInvalidFingerprint(t *testing.T) {
+	p, err := newPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.addAttribute(*newFingerprintAttribute(p))
+	wire := p.bytes()
+	wire[len(wire)-1] ^= 1
+	if _, err := newPacketFromBytes(wire); err == nil {
+		t.Fatal("accepted packet with invalid fingerprint")
+	}
+}
+
+func TestRFC5769SampleRequest(t *testing.T) {
+	// RFC 5769 section 2.1. Parsing the MESSAGE-INTEGRITY attribute does not
+	// require the password that would be needed to validate it.
+	wire, err := hex.DecodeString(
+		"000100582112a442b7e7a701bc34d686fa87dfae" +
+			"802200105354554e207465737420636c69656e74" +
+			"002400046e0001ff" +
+			"80290008932ff9b151263b36" +
+			"000600096576746a3a68367659202020" +
+			"000800149aeaa70cbfd8cb56781ef2b5b2d3f249c1b571a2" +
+			"80280004e57a3bcf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := newPacketFromBytes(wire)
+	if err != nil {
+		t.Fatalf("RFC sample did not parse: %v", err)
+	}
+	if p.types != typeBindingRequest || p.length != 88 || len(p.attributes) != 6 {
+		t.Fatalf("unexpected packet: type=%#x length=%d attributes=%d", p.types, p.length, len(p.attributes))
+	}
+	if !bytes.Equal(p.transID, wire[4:20]) {
+		t.Fatalf("transaction ID = %x, want %x", p.transID, wire[4:20])
+	}
+	if got := p.attributes[3]; got.types != attributeUsername || got.length != 9 || string(got.value) != "evtj:h6vY" {
+		t.Fatalf("USERNAME = %#v", got)
+	}
+	if got := p.bytes(); !bytes.Equal(got, wire) {
+		t.Fatalf("re-encoded sample differs\ngot  %x\nwant %x", got, wire)
+	}
+
+	p.attributes = p.attributes[:len(p.attributes)-1]
+	p.length -= 8
+	generated := newFingerprintAttribute(p)
+	if !bytes.Equal(generated.value, wire[len(wire)-4:]) {
+		t.Fatalf("generated fingerprint = %x, want %x", generated.value, wire[len(wire)-4:])
+	}
+}
+
+func TestRFC5769XorMappedResponses(t *testing.T) {
+	tests := []struct {
+		name string
+		hex  string
+		ip   string
+		port uint16
+	}{
+		{
+			name: "IPv4",
+			hex: "0101003c2112a442b7e7a701bc34d686fa87dfae" +
+				"8022000b7465737420766563746f7220" +
+				"002000080001a147e112a643" +
+				"000800142b91f599fd9e90c38c7489f92af9ba53f06be7d7" +
+				"80280004c07d4c96",
+			ip:   "192.0.2.1",
+			port: 32853,
+		},
+		{
+			name: "IPv6",
+			hex: "010100482112a442b7e7a701bc34d686fa87dfae" +
+				"8022000b7465737420766563746f7220" +
+				"002000140002a1470113a9faa5d3f179bc25f4b5bed2b9d9" +
+				"00080014a382954e4be67bf11784c97c8292c275bfe3ed41" +
+				"80280004c8fb0b4c",
+			ip:   "2001:db8:1234:5678:11:2233:4455:6677",
+			port: 32853,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wire, err := hex.DecodeString(tt.hex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, err := newPacketFromBytes(wire)
+			if err != nil {
+				t.Fatal(err)
+			}
+			h := p.getXorMappedAddr()
+			if h == nil || !net.ParseIP(h.IP()).Equal(net.ParseIP(tt.ip)) || h.Port() != tt.port {
+				t.Fatalf("XOR-MAPPED-ADDRESS = %#v, want %s:%d", h, tt.ip, tt.port)
+			}
+			if got := p.bytes(); !bytes.Equal(got, wire) {
+				t.Fatalf("response did not round trip\ngot  %x\nwant %x", got, wire)
+			}
+		})
+	}
+}
+
+func TestPacketPaddingLengths(t *testing.T) {
+	for length := 0; length <= 12; length++ {
+		t.Run(string(rune('A'+length)), func(t *testing.T) {
+			p, err := newPacket()
+			if err != nil {
+				t.Fatal(err)
+			}
+			value := bytes.Repeat([]byte{0xa5}, length)
+			p.addAttribute(*newAttribute(attributeSoftware, value))
+			wire := p.bytes()
+			wantBody := 4 + int(align(uint16(length)))
+			if len(wire) != 20+wantBody || int(p.length) != wantBody {
+				t.Fatalf("value length %d: wire=%d body=%d", length, len(wire), p.length)
+			}
+			parsed, err := newPacketFromBytes(wire)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(parsed.attributes) != 1 || !bytes.Equal(parsed.attributes[0].value, value) || int(parsed.attributes[0].length) != length {
+				t.Fatalf("value length %d did not round trip", length)
+			}
+		})
+	}
+}
+
+func TestPacketRejectsMalformedAttributes(t *testing.T) {
+	tests := map[string][]byte{
+		"padding exceeds message": {0, 1, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1},
+		"value exceeds message":   {0, 1, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 4},
+	}
+	for name, wire := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := newPacketFromBytes(wire); err == nil {
+				t.Fatalf("accepted malformed packet: %x", wire)
+			}
+		})
+	}
+
+	p, err := newPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.addAttribute(*newFingerprintAttribute(p))
+	p.addAttribute(*newSoftwareAttribute("after fingerprint"))
+	if _, err := newPacketFromBytes(p.bytes()); err == nil {
+		t.Fatal("accepted FINGERPRINT that was not the final attribute")
+	}
+}
+
+func TestPacketOwnsParsedBytes(t *testing.T) {
+	p, err := newPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.addAttribute(*newSoftwareAttribute("client"))
+	wire := p.bytes()
+	parsed, err := newPacketFromBytes(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range wire {
+		wire[i] = 0
+	}
+	if string(parsed.attributes[0].value) != "client" || bytes.Equal(parsed.transID, make([]byte, 16)) {
+		t.Fatal("parsed packet retained aliases into the caller's buffer")
+	}
+}
+
+func TestPacketPreservesNonzeroPadding(t *testing.T) {
+	p, err := newPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newSoftwareAttribute("x")
+	a.padding = []byte{0xaa, 0xbb, 0xcc}
+	p.addAttribute(*a)
+	p.addAttribute(*newFingerprintAttribute(p))
+	wire := p.bytes()
+
+	parsed, err := newPacketFromBytes(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parsed.bytes(); !bytes.Equal(got, wire) {
+		t.Fatalf("nonzero padding did not round trip\ngot  %x\nwant %x", got, wire)
+	}
+}
+
+func TestPacketParserRandomInputs(t *testing.T) {
+	random := rand.New(rand.NewSource(1))
+
+	// Arbitrary input primarily exercises rejection paths and verifies that no
+	// byte sequence can panic the parser.
+	for i := 0; i < 50000; i++ {
+		wire := make([]byte, random.Intn(512))
+		if _, err := random.Read(wire); err != nil {
+			t.Fatal(err)
+		}
+		p, err := newPacketFromBytes(wire)
+		if err != nil {
+			continue
+		}
+		if _, err := newPacketFromBytes(p.bytes()); err != nil {
+			t.Fatalf("accepted packet did not round trip: %v", err)
+		}
+	}
+
+	// Structurally valid randomized packets exercise deep parsing paths,
+	// arbitrary attribute types, boundary lengths, and nonzero padding.
+	for i := 0; i < 10000; i++ {
+		p := &packet{
+			types:      uint16(random.Intn(1 << 14)),
+			transID:    make([]byte, 16),
+			attributes: make([]attribute, 0, 7),
+		}
+		if _, err := random.Read(p.transID); err != nil {
+			t.Fatal(err)
+		}
+		for j, count := 0, random.Intn(7); j < count; j++ {
+			types := uint16(random.Intn(1 << 16))
+			if types == attributeFingerprint {
+				types++
+			}
+			value := make([]byte, random.Intn(65))
+			if _, err := random.Read(value); err != nil {
+				t.Fatal(err)
+			}
+			a := newAttribute(types, value)
+			if _, err := random.Read(a.padding); err != nil {
+				t.Fatal(err)
+			}
+			p.addAttribute(*a)
+		}
+		if random.Intn(2) == 0 {
+			p.addAttribute(*newFingerprintAttribute(p))
+		}
+
+		wire := p.bytes()
+		parsed, err := newPacketFromBytes(wire)
+		if err != nil {
+			t.Fatalf("valid randomized packet was rejected: %v", err)
+		}
+		if got := parsed.bytes(); !bytes.Equal(got, wire) {
+			t.Fatalf("valid randomized packet did not round trip\ngot  %x\nwant %x", got, wire)
+		}
 	}
 }

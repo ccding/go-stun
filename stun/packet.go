@@ -18,7 +18,10 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"hash/crc32"
 	"math"
+	"unicode/utf8"
 )
 
 type packet struct {
@@ -26,6 +29,18 @@ type packet struct {
 	length     uint16
 	transID    []byte // 4 bytes magic cookie + 12 bytes transaction id
 	attributes []attribute
+}
+
+type stunError struct {
+	Code   int
+	Reason string
+}
+
+func (e *stunError) Error() string {
+	if e.Reason == "" {
+		return fmt.Sprintf("stun server returned error %d", e.Code)
+	}
+	return fmt.Sprintf("stun server returned error %d: %s", e.Code, e.Reason)
 }
 
 func newPacket() (*packet, error) {
@@ -43,28 +58,52 @@ func newPacket() (*packet, error) {
 
 func newPacketFromBytes(packetBytes []byte) (*packet, error) {
 	if len(packetBytes) < 20 {
-		return nil, errors.New("Received data length too short")
+		return nil, errors.New("received data length too short")
 	}
 	if len(packetBytes) > math.MaxUint16+20 {
-		return nil, errors.New("Received data length too long")
+		return nil, errors.New("received data length too long")
+	}
+	if packetBytes[0]&0xc0 != 0 {
+		return nil, errors.New("received data is not a STUN message")
+	}
+	messageLength := int(binary.BigEndian.Uint16(packetBytes[2:4]))
+	if messageLength%4 != 0 || messageLength != len(packetBytes)-20 {
+		return nil, errors.New("received data length mismatch")
 	}
 	pkt := new(packet)
 	pkt.types = binary.BigEndian.Uint16(packetBytes[0:2])
 	pkt.length = binary.BigEndian.Uint16(packetBytes[2:4])
-	pkt.transID = packetBytes[4:20]
+	pkt.transID = append([]byte(nil), packetBytes[4:20]...)
 	pkt.attributes = make([]attribute, 0, 10)
-	packetBytes = packetBytes[20:]
-	for pos := uint16(0); pos+4 < uint16(len(packetBytes)); {
-		types := binary.BigEndian.Uint16(packetBytes[pos : pos+2])
-		length := binary.BigEndian.Uint16(packetBytes[pos+2 : pos+4])
-		end := pos + 4 + length
-		if end < pos+4 || end > uint16(len(packetBytes)) {
-			return nil, errors.New("Received data format mismatch")
+	attributes := packetBytes[20:]
+	for pos := 0; pos < len(attributes); {
+		if len(attributes)-pos < 4 {
+			return nil, errors.New("received data format mismatch")
 		}
-		value := packetBytes[pos+4 : end]
+		types := binary.BigEndian.Uint16(attributes[pos : pos+2])
+		length := int(binary.BigEndian.Uint16(attributes[pos+2 : pos+4]))
+		end := pos + 4 + length
+		paddedEnd := pos + 4 + int(align(uint16(length)))
+		if end > len(attributes) || paddedEnd > len(attributes) {
+			return nil, errors.New("received data format mismatch")
+		}
+		value := attributes[pos+4 : end]
+		if types == attributeFingerprint {
+			if length != 4 || paddedEnd != len(attributes) {
+				return nil, errors.New("invalid fingerprint attribute")
+			}
+			got := binary.BigEndian.Uint32(value)
+			want := crc32.ChecksumIEEE(packetBytes[:20+pos]) ^ fingerprint
+			if got != want {
+				return nil, errors.New("fingerprint check failed")
+			}
+		}
 		attribute := newAttribute(types, value)
-		pkt.addAttribute(*attribute)
-		pos += align(length) + 4
+		attribute.padding = append(attribute.padding[:0], attributes[end:paddedEnd]...)
+		// The header already contains the complete message length. Appending a
+		// parsed attribute must not add its size to that length a second time.
+		pkt.attributes = append(pkt.attributes, *attribute)
+		pos = paddedEnd
 	}
 	return pkt, nil
 }
@@ -86,12 +125,9 @@ func (v *packet) bytes() []byte {
 		binary.BigEndian.PutUint16(buf, a.length)
 		packetBytes = append(packetBytes, buf...)
 		packetBytes = append(packetBytes, a.value...)
+		packetBytes = append(packetBytes, a.padding...)
 	}
 	return packetBytes
-}
-
-func (v *packet) getSourceAddr() *Host {
-	return v.getRawAddr(attributeSourceAddress)
 }
 
 func (v *packet) getMappedAddr() *Host {
@@ -107,10 +143,9 @@ func (v *packet) getOtherAddr() *Host {
 }
 
 func (v *packet) getRawAddr(attribute uint16) *Host {
-	for _, a := range v.attributes {
-		if a.types == attribute {
-			return a.rawAddr()
-		}
+	a := v.getAttributeBeforeIntegrity(attribute)
+	if a != nil {
+		return a.rawAddr()
 	}
 	return nil
 }
@@ -124,10 +159,94 @@ func (v *packet) getXorMappedAddr() *Host {
 }
 
 func (v *packet) getXorAddr(attribute uint16) *Host {
-	for _, a := range v.attributes {
-		if a.types == attribute {
-			return a.xorAddr(v.transID)
+	a := v.getAttributeBeforeIntegrity(attribute)
+	if a != nil {
+		return a.xorAddr(v.transID)
+	}
+	return nil
+}
+
+func (v *packet) getAttributeBeforeIntegrity(types uint16) *attribute {
+	for i := range v.attributes {
+		a := &v.attributes[i]
+		if a.types == types {
+			return a
+		}
+		if a.types == attributeMessageIntegrity {
+			break
 		}
 	}
 	return nil
+}
+
+func (v *packet) validateBindingResponseAttributes() error {
+	for i := range v.attributes {
+		a := &v.attributes[i]
+		if a.types == attributeMessageIntegrity && a.length != 20 {
+			return errors.New("binding response has invalid MESSAGE-INTEGRITY")
+		}
+		if a.types < 0x8000 && !isKnownRequiredAttribute(a.types) {
+			return fmt.Errorf("binding response contains unknown required attribute %#04x", a.types)
+		}
+		if a.types == attributeMessageIntegrity {
+			break
+		}
+	}
+	return nil
+}
+
+func (v *packet) bindingError() error {
+	a := v.getAttributeBeforeIntegrity(attributeErrorCode)
+	if a == nil {
+		return errors.New("binding error response has no ERROR-CODE")
+	}
+	if len(a.value) < 4 {
+		return errors.New("binding error response has an invalid ERROR-CODE")
+	}
+	class := int(a.value[2] & 0x07)
+	number := int(a.value[3])
+	reason := a.value[4:]
+	if class < 3 || class > 6 || number > 99 || !utf8.Valid(reason) || utf8.RuneCount(reason) >= 128 {
+		return errors.New("binding error response has an invalid ERROR-CODE")
+	}
+	return &stunError{Code: class*100 + number, Reason: string(reason)}
+}
+
+func isKnownRequiredAttribute(types uint16) bool {
+	switch types {
+	case attributeMappedAddress,
+		attributeResponseAddress,
+		attributeChangeRequest,
+		attributeSourceAddress,
+		attributeChangedAddress,
+		attributeUsername,
+		attributePassword,
+		attributeMessageIntegrity,
+		attributeErrorCode,
+		attributeUnknownAttributes,
+		attributeReflectedFrom,
+		attributeChannelNumber,
+		attributeLifetime,
+		attributeBandwidth,
+		attributeXorPeerAddress,
+		attributeData,
+		attributeRealm,
+		attributeNonce,
+		attributeXorRelayedAddress,
+		attributeRequestedAddressFamily,
+		attributeEvenPort,
+		attributeRequestedTransport,
+		attributeDontFragment,
+		attributeXorMappedAddress,
+		attributeTimerVal,
+		attributeReservationToken,
+		attributePriority,
+		attributeUseCandidate,
+		attributePadding,
+		attributeResponsePort,
+		attributeConnectionID:
+		return true
+	default:
+		return false
+	}
 }

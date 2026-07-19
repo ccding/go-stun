@@ -36,12 +36,24 @@ External Port: 23009
 ```
 You can use `-s` flag to use another STUN server, and use `-v` to work on
 verbose mode.
+
+Most public STUN servers, including Google's and Cloudflare's, support basic
+Binding requests but not the alternate-address tests needed to classify NAT
+behavior. With those servers the client returns `NATUnknown`, a non-nil mapped
+address, and a nil error. Full NAT classification requires a server that
+supports RFC 5780 behavior discovery.
 ```bash
 > ./go-stun --help
 Usage of ./go-stun:
+  -b    Enable NAT behavior test mode
+  -i string
+        The ip on which to bind requests, set to empty will use default
+  -p int
+        The port on which to bind requests, set to 0 to pick a random port
   -s string
-        server address (default "stun1.l.google.com:19302")
-  -v    verbose mode
+        STUN server address (default "stunserver2025.stunprotocol.org:3478")
+  -v int
+        Verbose level (0: none, 1: verbose, 2: double verbose, 3: triple verbose)
 ```
 
 ### Use the Library

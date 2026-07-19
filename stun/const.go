@@ -16,7 +16,7 @@ package stun
 
 // Default server address and client name.
 const (
-	DefaultServerAddr   = "stun.ekiga.net:3478"
+	DefaultServerAddr   = "stunserver2025.stunprotocol.org:3478"
 	DefaultSoftwareName = "StunClient"
 )
 
@@ -70,8 +70,8 @@ var natNormalTypeStr map[NATBehavior]string
 func init() {
 	natStr = map[NATType]string{
 		NATError:             "Test failed",
-		NATUnknown:           "Unexpected response from the STUN server",
-		NATBlocked:           "UDP is blocked",
+		NATUnknown:           "NAT type unavailable",
+		NATBlocked:           "UDP blocked or STUN server unreachable",
 		NATFull:              "Full cone NAT",
 		NATSymmetric:         "Symmetric NAT",
 		NATRestricted:        "Restricted NAT",
@@ -117,27 +117,6 @@ func (natBehavior NATBehavior) NormalType() string {
 	return "Undefined"
 }
 
-const (
-	errorTryAlternate                 = 300
-	errorBadRequest                   = 400
-	errorUnauthorized                 = 401
-	errorUnassigned402                = 402
-	errorForbidden                    = 403
-	errorUnknownAttribute             = 420
-	errorAllocationMismatch           = 437
-	errorStaleNonce                   = 438
-	errorUnassigned439                = 439
-	errorAddressFamilyNotSupported    = 440
-	errorWrongCredentials             = 441
-	errorUnsupportedTransportProtocol = 442
-	errorPeerAddressFamilyMismatch    = 443
-	errorConnectionAlreadyExists      = 446
-	errorConnectionTimeoutOrFailure   = 447
-	errorAllocationQuotaReached       = 486
-	errorRoleConflict                 = 487
-	errorServerError                  = 500
-	errorInsufficientCapacity         = 508
-)
 const (
 	attributeFamilyIPv4 = 0x01
 	attributeFamilyIPV6 = 0x02

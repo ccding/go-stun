@@ -34,13 +34,16 @@ func align(n uint16) uint16 {
 func isLocalAddress(local, localRemote string) bool {
 	// Resolve the IP returned by the STUN server first.
 	localRemoteAddr, err := net.ResolveUDPAddr("udp", localRemote)
-	if err != nil {
+	if err != nil || localRemoteAddr.IP == nil {
 		return false
 	}
 	// Try comparing with the local address on the socket first, but only if
 	// it's actually specified.
 	addr, err := net.ResolveUDPAddr("udp", local)
-	if err == nil && addr.IP != nil && !addr.IP.IsUnspecified() {
+	if err != nil || addr.Port != localRemoteAddr.Port {
+		return false
+	}
+	if addr.IP != nil && !addr.IP.IsUnspecified() {
 		return addr.IP.Equal(localRemoteAddr.IP)
 	}
 	// Fallback to checking IPs of all interfaces

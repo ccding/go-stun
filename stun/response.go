@@ -40,10 +40,10 @@ func newResponse(pkt *packet, conn net.PacketConn) *response {
 	}
 	resp.mappedAddr = mappedAddr
 	// compute identical
-	localAddrStr := conn.LocalAddr().String()
-	if mappedAddr != nil {
+	localAddr := conn.LocalAddr()
+	if mappedAddr != nil && localAddr != nil {
 		mappedAddrStr := mappedAddr.String()
-		resp.identical = isLocalAddress(localAddrStr, mappedAddrStr)
+		resp.identical = isLocalAddress(localAddr.String(), mappedAddrStr)
 	}
 	// compute changedAddr
 	changedAddr := pkt.getChangedAddr()
