@@ -208,7 +208,7 @@ A non-nil behavior result may contain partial results when a later probe fails.
 `MappedAddress` contains the initial Binding response's address, and
 `PortPreservation` is `nil` when the local port is unavailable. Both observations
 use the same socket as the behavior probes; no separate discovery call is
-needed. See [F-001](docs/FEATURES.md#f-001-behavior-mode-address-and-port-preservation).
+needed.
 
 ### RFC 3489 compatibility
 
