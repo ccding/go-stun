@@ -184,8 +184,8 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	return NATSymmetric, mappedAddr, nil
 }
 
-func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehavior, error) {
-	natBehavior := &NATBehavior{}
+func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehaviorResult, error) {
+	natBehavior := &NATBehaviorResult{}
 
 	// Test1   ->(IP1,port1)
 	// Perform test to check if it is under NAT.

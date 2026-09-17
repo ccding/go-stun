@@ -179,28 +179,29 @@ server does not provide a usable alternate address, it returns
 `stun.NATUnknown`, the mapped address, and a `nil` error. The mapped address is
 still valid even though the NAT type could not be determined.
 
-Add `"errors"` to the import block, then call `BehaviorTest` (or use the CLI's
-`-b` option) for RFC 5780 mapping and filtering tests:
+Add `"errors"` to the import block, then call `BehaviorTestWithDetails` (or use
+the CLI's `-b` option) for RFC 5780 mapping and filtering tests together with the
+external address and port-preservation observation:
 
 ```go
-behavior, err := client.BehaviorTest()
+result, err := client.BehaviorTestWithDetails()
 if errors.Is(err, stun.ErrBehaviorDiscoveryUnsupported) {
 	fmt.Println("The server does not support behavior discovery")
 } else if err != nil {
 	fmt.Println("Behavior test failed:", err)
 }
 
-if behavior != nil && behavior.MappingType != stun.BehaviorTypeUnknown {
-	fmt.Println("Mapping behavior:", behavior.MappingType)
+if result != nil && result.MappingType != stun.BehaviorTypeUnknown {
+	fmt.Println("Mapping behavior:", result.MappingType)
 }
-if behavior != nil && behavior.FilteringType != stun.BehaviorTypeUnknown {
-	fmt.Println("Filtering behavior:", behavior.FilteringType)
+if result != nil && result.FilteringType != stun.BehaviorTypeUnknown {
+	fmt.Println("Filtering behavior:", result.FilteringType)
 }
-if behavior != nil && behavior.MappedAddress != nil {
-	fmt.Println("Mapped address:", behavior.MappedAddress)
+if result != nil && result.MappedAddress != nil {
+	fmt.Println("Mapped address:", result.MappedAddress)
 }
-if behavior != nil && behavior.PortPreservation != nil {
-	fmt.Println("Port preservation:", *behavior.PortPreservation)
+if result != nil && result.PortPreservation != nil {
+	fmt.Println("Port preservation:", *result.PortPreservation)
 }
 ```
 
@@ -210,12 +211,11 @@ A non-nil behavior result may contain partial results when a later probe fails.
 use the same socket as the behavior probes; no separate discovery call is
 needed.
 
-Construct `NATBehavior` values with keyed struct literals. To compare NAT
-classifications, compare `MappingType`, `FilteringType`, and `NoTranslation`
-explicitly. The observation fields describe an individual exchange:
-whole-struct equality and map keys include their pointer identities, while
-`reflect.DeepEqual` includes their values. Matching classifications can therefore
-have unequal results.
+`BehaviorTest` retains its existing `*NATBehavior` return value and three-field
+structure, so existing struct literals, equality comparisons, and map keys keep
+working. `BehaviorTestWithDetails` returns `*NATBehaviorResult`, which embeds that
+classification as `result.NATBehavior` and adds the observations. Use
+`result.NATBehavior` when comparing classifications.
 
 ### RFC 3489 compatibility
 

@@ -230,15 +230,17 @@ func TestNormalTypeWithoutTranslation(t *testing.T) {
 func TestNormalType_MappedObservationsDoNotChangeClassification(t *testing.T) {
 	for classification, want := range natNormalTypeStr {
 		for _, preserved := range []bool{false, true} {
-			behavior := classification
-			behavior.MappedAddress = newHostFromStr("192.0.2.20:40000")
-			behavior.PortPreservation = &preserved
+			behavior := NATBehaviorResult{
+				NATBehavior:      classification,
+				MappedAddress:    newHostFromStr("192.0.2.20:40000"),
+				PortPreservation: &preserved,
+			}
 			if got := behavior.NormalType(); got != want {
 				t.Fatalf("NormalType(%#v) = %q, want %q", behavior, got, want)
 			}
 		}
 	}
-	unknown := NATBehavior{MappedAddress: newHostFromStr("192.0.2.20:40000")}
+	unknown := NATBehaviorResult{MappedAddress: newHostFromStr("192.0.2.20:40000")}
 	if got := unknown.NormalType(); got != "Undefined" {
 		t.Fatalf("unknown NormalType() = %q", got)
 	}

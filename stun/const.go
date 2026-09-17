@@ -31,18 +31,21 @@ type NATType int
 // BehaviorType is NAT behavior type.
 type BehaviorType int
 
-// NATBehavior describes NAT mapping and filtering behavior, together with
-// observations from the initial Binding response.
-// Use keyed struct literals when constructing values. To compare NAT
-// classifications, compare MappingType, FilteringType, and NoTranslation
-// explicitly: the observation fields describe an individual exchange, and
-// whole-struct equality also compares their pointer identities.
+// NATBehavior describes NAT mapping and filtering behavior.
 type NATBehavior struct {
 	MappingType   BehaviorType
 	FilteringType BehaviorType
 	// NoTranslation is true when the mapped transport address matches the
 	// client's local address.
 	NoTranslation bool
+}
+
+// NATBehaviorResult is returned by BehaviorTestWithDetails. It combines NAT
+// behavior with observations from the initial Binding response. Its embedded
+// NATBehavior can be compared independently of the observations from an
+// individual exchange.
+type NATBehaviorResult struct {
+	NATBehavior
 	// MappedAddress is the external address from the initial Binding response.
 	// Later probes may observe different mappings without changing this field.
 	// It is nil if no valid initial mapping was obtained.
@@ -134,11 +137,7 @@ func (natBehavior NATBehavior) NormalType() string {
 		}
 		return "Open Internet (no NAT)"
 	}
-	// Mapped-address observations do not affect the classification.
-	classification := NATBehavior{
-		MappingType: natBehavior.MappingType, FilteringType: natBehavior.FilteringType,
-	}
-	if s, ok := natNormalTypeStr[classification]; ok {
+	if s, ok := natNormalTypeStr[natBehavior]; ok {
 		return s
 	}
 	return "Undefined"

@@ -147,13 +147,27 @@ func (c *Client) Discover() (NATType, *Host, error) {
 	return c.discover(conn, serverUDPAddr)
 }
 
-// BehaviorTest performs RFC 5780 mapping and filtering behavior tests. The
-// result includes the initial mapped address and whether its port matches the
-// actual local socket port, when available. If a later probe fails,
-// it returns those observations and the behavior fields already determined
-// along with the error. Servers without a usable alternate address return
-// ErrBehaviorDiscoveryUnsupported together with the initial observations.
+// BehaviorTest performs RFC 5780 mapping and filtering behavior tests. If a
+// later probe fails, it returns the behavior fields already determined along
+// with the error. Servers without a usable alternate address return
+// ErrBehaviorDiscoveryUnsupported. Use BehaviorTestWithDetails to also
+// obtain the initial mapped address and port-preservation observation.
 func (c *Client) BehaviorTest() (*NATBehavior, error) {
+	result, err := c.BehaviorTestWithDetails()
+	if result == nil {
+		return nil, err
+	}
+	return &result.NATBehavior, err
+}
+
+// BehaviorTestWithDetails performs RFC 5780 mapping and filtering behavior
+// tests. The result includes the initial mapped address and whether its port
+// matches the actual local socket port, when available. If a later probe
+// fails, it returns those observations and the behavior fields already
+// determined along with the error. Servers without a usable alternate
+// address return ErrBehaviorDiscoveryUnsupported together with the initial
+// observations. If the initial Binding fails, the result is nil.
+func (c *Client) BehaviorTestWithDetails() (*NATBehaviorResult, error) {
 	c.ensureLogger()
 	if c.serverAddr == "" {
 		c.SetServerAddr(DefaultServerAddr)

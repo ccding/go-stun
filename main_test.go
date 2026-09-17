@@ -29,7 +29,7 @@ import (
 
 func TestWriteBehaviorTestResultTreatsUnsupportedServerAsSuccess(t *testing.T) {
 	var output bytes.Buffer
-	if err := writeBehaviorTestResult(&output, &stun.NATBehavior{}, stun.ErrBehaviorDiscoveryUnsupported); err != nil {
+	if err := writeBehaviorTestResult(&output, &stun.NATBehaviorResult{}, stun.ErrBehaviorDiscoveryUnsupported); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.TrimSpace(output.String()); got != stun.ErrBehaviorDiscoveryUnsupported.Error() {
@@ -87,7 +87,7 @@ func TestRunDiscoveryDispatchesTCP(t *testing.T) {
 
 func TestWriteBehaviorTestResultPreservesUnsupportedNoTranslation(t *testing.T) {
 	var output bytes.Buffer
-	behavior := &stun.NATBehavior{NoTranslation: true}
+	behavior := &stun.NATBehaviorResult{NATBehavior: stun.NATBehavior{NoTranslation: true}}
 	if err := writeBehaviorTestResult(&output, behavior, stun.ErrBehaviorDiscoveryUnsupported); err != nil {
 		t.Fatal(err)
 	}
@@ -100,11 +100,11 @@ func TestWriteBehaviorTestResultPreservesUnsupportedNoTranslation(t *testing.T) 
 
 func TestWriteBehaviorTestResultReportsOpenInternet(t *testing.T) {
 	var output bytes.Buffer
-	behavior := &stun.NATBehavior{
+	behavior := &stun.NATBehaviorResult{NATBehavior: stun.NATBehavior{
 		MappingType:   stun.BehaviorTypeEndpoint,
 		FilteringType: stun.BehaviorTypeEndpoint,
 		NoTranslation: true,
-	}
+	}}
 	if err := writeBehaviorTestResult(&output, behavior, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestWriteBehaviorTestResultReturnsOperationalErrors(t *testing.T) {
 func TestWriteBehaviorTestResultPreservesPartialBehavior(t *testing.T) {
 	var output bytes.Buffer
 	want := errors.New("alternate server timed out")
-	behavior := &stun.NATBehavior{FilteringType: stun.BehaviorTypeAddr}
+	behavior := &stun.NATBehaviorResult{NATBehavior: stun.NATBehavior{FilteringType: stun.BehaviorTypeAddr}}
 	if got := writeBehaviorTestResult(&output, behavior, want); !errors.Is(got, want) {
 		t.Fatalf("error = %v, want %v", got, want)
 	}
@@ -136,10 +136,10 @@ func TestWriteBehaviorTestResultPreservesPartialBehavior(t *testing.T) {
 func TestWriteBehaviorTestResultClassifiesCompletePartialBehavior(t *testing.T) {
 	var output bytes.Buffer
 	wantErr := errors.New("later behavior probe failed")
-	behavior := &stun.NATBehavior{
+	behavior := &stun.NATBehaviorResult{NATBehavior: stun.NATBehavior{
 		MappingType:   stun.BehaviorTypeEndpoint,
 		FilteringType: stun.BehaviorTypeAddrAndPort,
-	}
+	}}
 	if got := writeBehaviorTestResult(&output, behavior, wantErr); !errors.Is(got, wantErr) {
 		t.Fatalf("error = %v, want %v", got, wantErr)
 	}
@@ -161,7 +161,7 @@ func (w failingWriter) Write([]byte) (int, error) {
 
 func TestWriteBehaviorTestResultReturnsPartialWriteError(t *testing.T) {
 	want := errors.New("write failed")
-	behavior := &stun.NATBehavior{NoTranslation: true}
+	behavior := &stun.NATBehaviorResult{NATBehavior: stun.NATBehavior{NoTranslation: true}}
 	got := writeBehaviorTestResult(failingWriter{err: want}, behavior, stun.ErrBehaviorDiscoveryUnsupported)
 	if !errors.Is(got, want) {
 		t.Fatalf("error = %v, want %v", got, want)
@@ -330,9 +330,9 @@ func TestWriteBehaviorTestResult_ReportsMappedAddressAndPortPreservation(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			var output bytes.Buffer
 			host := mappedHostForTest(t, tt.ip)
-			behavior := &stun.NATBehavior{
+			behavior := &stun.NATBehaviorResult{
 				MappedAddress: host, PortPreservation: &tt.preserved,
-				MappingType: stun.BehaviorTypeEndpoint, FilteringType: stun.BehaviorTypeAddr,
+				NATBehavior: stun.NATBehavior{MappingType: stun.BehaviorTypeEndpoint, FilteringType: stun.BehaviorTypeAddr},
 			}
 			if errors.Is(tt.err, stun.ErrBehaviorDiscoveryUnsupported) {
 				behavior.MappingType, behavior.FilteringType = stun.BehaviorTypeUnknown, stun.BehaviorTypeUnknown
@@ -368,9 +368,9 @@ func TestWriteBehaviorTestResult_ReportsMappedAddressAndPortPreservation(t *test
 func TestWriteBehaviorTestResult_UnsupportedServerRetainsBindingOutput(t *testing.T) {
 	client := stun.NewClientWithConnection(&mappedAddressConn{ip: net.ParseIP("192.0.2.20")})
 	client.SetServerAddr("198.51.100.1:3478")
-	behavior, err := client.BehaviorTest()
+	behavior, err := client.BehaviorTestWithDetails()
 	if !errors.Is(err, stun.ErrBehaviorDiscoveryUnsupported) {
-		t.Fatalf("BehaviorTest() error = %v", err)
+		t.Fatalf("BehaviorTestWithDetails() error = %v", err)
 	}
 	var output bytes.Buffer
 	if err := writeBehaviorTestResult(&output, behavior, err); err != nil {
@@ -385,7 +385,7 @@ func TestWriteBehaviorTestResult_UnsupportedServerRetainsBindingOutput(t *testin
 
 func TestWriteBehaviorTestResult_ReportsMappedAddressWhenPreservationUnknown(t *testing.T) {
 	var output bytes.Buffer
-	behavior := &stun.NATBehavior{MappedAddress: mappedHostForTest(t, "192.0.2.20")}
+	behavior := &stun.NATBehaviorResult{MappedAddress: mappedHostForTest(t, "192.0.2.20")}
 	if err := writeBehaviorTestResult(&output, behavior, stun.ErrBehaviorDiscoveryUnsupported); err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +398,7 @@ func TestWriteBehaviorTestResult_ReportsMappedAddressWhenPreservationUnknown(t *
 
 func TestWriteBehaviorTestResult_InitialBindingFailurePrintsNoObservations(t *testing.T) {
 	wantErr := errors.New("initial Binding failed")
-	for _, behavior := range []*stun.NATBehavior{nil, {}} {
+	for _, behavior := range []*stun.NATBehaviorResult{nil, {}} {
 		var output bytes.Buffer
 		if err := writeBehaviorTestResult(&output, behavior, wantErr); !errors.Is(err, wantErr) {
 			t.Fatalf("error = %v, want %v", err, wantErr)
@@ -425,7 +425,7 @@ func (w *failAfterWriter) Write(p []byte) (int, error) {
 func TestWriteBehaviorTestResult_ReturnsMappedOutputWriteErrors(t *testing.T) {
 	host := mappedHostForTest(t, "192.0.2.20")
 	preserved := false
-	behavior := &stun.NATBehavior{MappedAddress: host, PortPreservation: &preserved}
+	behavior := &stun.NATBehaviorResult{MappedAddress: host, PortPreservation: &preserved}
 	wantErr := errors.New("write failed")
 	for _, probeErr := range []error{nil, stun.ErrBehaviorDiscoveryUnsupported, errors.New("later failure")} {
 		for remaining := 0; remaining < 4; remaining++ {
