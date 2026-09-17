@@ -388,7 +388,9 @@ func TestBehaviorTestClassificationMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if *behavior != tt.want {
+			if behavior.MappingType != tt.want.MappingType ||
+				behavior.FilteringType != tt.want.FilteringType ||
+				behavior.NoTranslation != tt.want.NoTranslation {
 				t.Fatalf("behavior = %#v, want %#v", *behavior, tt.want)
 			}
 		})
@@ -483,5 +485,215 @@ func TestResolveLocalAddrSupportsIPv6(t *testing.T) {
 	}
 	if addr == nil || !addr.IP.Equal(net.ParseIP("2001:db8::1")) || addr.Port != 5000 {
 		t.Fatalf("local address = %#v", addr)
+	}
+}
+
+func TestBehaviorTest_PreservesClassificationEqualityAndMapKeys(t *testing.T) {
+	want := NATBehavior{MappingType: BehaviorTypeAddr, FilteringType: BehaviorTypeAddr}
+	// Preserve source compatibility with the original three-field literal.
+	positional := NATBehavior{BehaviorTypeAddr, BehaviorTypeAddr, false}
+	if positional != want {
+		t.Fatalf("positional literal = %#v, want %#v", positional, want)
+	}
+	classifications := map[NATBehavior]string{want: "address dependent"}
+	var previous *NATBehavior
+	for exchange := 0; exchange < 2; exchange++ {
+		client := NewClientWithConnection(newBehaviorPacketConn())
+		client.SetServerAddr("198.51.100.1:3478")
+		behavior, err := client.BehaviorTest()
+		if err != nil || behavior == nil {
+			t.Fatalf("BehaviorTest() = %#v, %v", behavior, err)
+		}
+		if *behavior != want {
+			t.Errorf("classification = %#v, want %#v", *behavior, want)
+		}
+		if got := classifications[*behavior]; got != "address dependent" {
+			t.Errorf("classification map lookup = %q, want address dependent", got)
+		}
+		if previous != nil && *behavior != *previous {
+			t.Errorf("identical classifications differ across exchanges: %#v and %#v", *previous, *behavior)
+		}
+		previous = behavior
+	}
+}
+
+func TestBehaviorTestAPIs_RetainPartialResultsAndErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*behaviorPacketConn)
+		wantError bool
+		probes    int
+	}{
+		{"endpoint mapping", func(c *behaviorPacketConn) { c.uniformMapping = true }, false, 4},
+		{"different alternate mapping", func(*behaviorPacketConn) {}, false, 5},
+		{"different mapping at each destination", func(c *behaviorPacketConn) { c.portSensitiveMapping = true }, false, 5},
+		{"unsupported server", func(c *behaviorPacketConn) { c.omitOtherAddress = true }, true, 1},
+		{"unusable alternate IP", func(c *behaviorPacketConn) { c.alternateSameIP = true }, true, 1},
+		{"unusable alternate port", func(c *behaviorPacketConn) { c.alternateSamePort = true }, true, 1},
+		{"filtering response invalid", func(c *behaviorPacketConn) { c.changeBothFromSameAddr = true }, true, 2},
+		{"filtering response missing mapping", func(c *behaviorPacketConn) { c.omitMappedAt = 3 }, true, 3},
+		{"alternate unreachable", func(c *behaviorPacketConn) { c.alternateUnreachable = true }, true, 4},
+		{"alternate response invalid", func(c *behaviorPacketConn) { c.mappingProbeFromWrongAddr = true }, true, 4},
+		{"last mapping probe fails", func(c *behaviorPacketConn) { c.omitMappedAt = 5 }, true, 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn := newBehaviorPacketConn()
+			tt.configure(conn)
+			client := NewClientWithConnection(conn)
+			client.SetServerAddr("198.51.100.1:3478")
+			behavior, err := client.BehaviorTestWithDetails()
+			if (err != nil) != tt.wantError {
+				t.Fatalf("BehaviorTestWithDetails() error = %v, want error %v", err, tt.wantError)
+			}
+			if behavior == nil || behavior.MappedAddress == nil || behavior.MappedAddress.String() != "192.0.2.20:40000" {
+				t.Fatalf("initial mapped address lost: %#v", behavior)
+			}
+			if behavior.PortPreservation == nil || *behavior.PortPreservation {
+				t.Fatalf("port preservation = %v, want false", behavior.PortPreservation)
+			}
+			if len(conn.probes) != tt.probes {
+				t.Fatalf("sent %d probes, want %d: %#v", len(conn.probes), tt.probes, conn.probes)
+			}
+
+			legacyConn := newBehaviorPacketConn()
+			tt.configure(legacyConn)
+			legacyClient := NewClientWithConnection(legacyConn)
+			legacyClient.SetServerAddr("198.51.100.1:3478")
+			classification, legacyErr := legacyClient.BehaviorTest()
+			if classification == nil || *classification != behavior.NATBehavior {
+				t.Fatalf("BehaviorTest() classification = %#v, want %#v", classification, behavior.NATBehavior)
+			}
+			if (legacyErr != nil) != (err != nil) || (legacyErr != nil && legacyErr.Error() != err.Error()) {
+				t.Fatalf("BehaviorTest() error = %v, want %v", legacyErr, err)
+			}
+			if errors.Is(legacyErr, ErrBehaviorDiscoveryUnsupported) != errors.Is(err, ErrBehaviorDiscoveryUnsupported) {
+				t.Fatalf("unsupported error identity lost: detailed %v, legacy %v", err, legacyErr)
+			}
+			if len(legacyConn.probes) != tt.probes {
+				t.Fatalf("BehaviorTest() sent %d probes, want %d: %#v", len(legacyConn.probes), tt.probes, legacyConn.probes)
+			}
+		})
+	}
+}
+
+type behaviorLocalAddr string
+
+func (a behaviorLocalAddr) Network() string { return "udp" }
+func (a behaviorLocalAddr) String() string  { return string(a) }
+
+func TestBehaviorTestWithDetails_PortPreservationUsesActualConnectionPort(t *testing.T) {
+	previousInterfaceAddrs := interfaceAddrs
+	interfaceAddrs = func() ([]net.Addr, error) { return nil, nil }
+	defer func() { interfaceAddrs = previousInterfaceAddrs }()
+	tests := []struct {
+		name       string
+		local      net.Addr
+		configured int
+		mappedIP   string
+		wantKnown  bool
+		want       bool
+	}{
+		{"ephemeral preserved", &net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 40000}, 0, "192.0.2.20", true, true},
+		{"ephemeral translated", &net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 5000}, 0, "192.0.2.20", true, false},
+		{"supplied connection overrides configured port", &net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 40000}, 5000, "192.0.2.20", true, true},
+		{"configured port cannot mask translation", &net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 5000}, 40000, "192.0.2.20", true, false},
+		{"IPv6 preserved", &net.UDPAddr{IP: net.ParseIP("2001:db8::1"), Port: 40000}, 0, "2001:db8::20", true, true},
+		{"zoned IPv6 preserved", &net.UDPAddr{IP: net.ParseIP("fe80::1"), Zone: "eth0", Port: 40000}, 0, "2001:db8::20", true, true},
+		{"unspecified local IP", &net.UDPAddr{Port: 40000}, 0, "192.0.2.20", true, true},
+		{"custom address", behaviorLocalAddr("10.0.0.1:40000"), 0, "192.0.2.20", true, true},
+		{"missing local address", nil, 40000, "192.0.2.20", false, false},
+		{"nil UDP address", (*net.UDPAddr)(nil), 40000, "192.0.2.20", false, false},
+		{"invalid local address", behaviorLocalAddr("invalid address"), 40000, "192.0.2.20", false, false},
+		{"invalid local port", behaviorLocalAddr("10.0.0.1:not-a-port"), 40000, "192.0.2.20", false, false},
+		{"zero local port", &net.UDPAddr{IP: net.ParseIP("10.0.0.1")}, 40000, "192.0.2.20", false, false},
+		{"negative local port", &net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: -1}, 40000, "192.0.2.20", false, false},
+		{"out of range local port", &net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 105536}, 40000, "192.0.2.20", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn := &bindingResponseConn{
+				scriptedPacketConn: scriptedPacketConn{local: tt.local},
+				mappedIP:           net.ParseIP(tt.mappedIP), mappedPort: 40000,
+			}
+			client := NewClientWithConnection(conn)
+			client.SetServerAddr("198.51.100.1:3478")
+			client.SetLocalPort(tt.configured)
+			behavior, err := client.BehaviorTestWithDetails()
+			if !errors.Is(err, ErrBehaviorDiscoveryUnsupported) {
+				t.Fatalf("BehaviorTestWithDetails() error = %v", err)
+			}
+			if behavior == nil || behavior.MappedAddress == nil || behavior.MappedAddress.IP() != tt.mappedIP || behavior.MappedAddress.Port() != 40000 {
+				t.Fatalf("mapped address lost: %#v", behavior)
+			}
+			if (behavior.PortPreservation != nil) != tt.wantKnown {
+				t.Fatalf("port preservation = %v, want known %v", behavior.PortPreservation, tt.wantKnown)
+			}
+			if tt.wantKnown && *behavior.PortPreservation != tt.want {
+				t.Fatalf("port preservation = %v, want %v", *behavior.PortPreservation, tt.want)
+			}
+		})
+	}
+}
+
+func TestBehaviorTestAPIs_InitialBindingFailureHasNoResult(t *testing.T) {
+	wantErr := errors.New("network failed")
+	tests := []struct {
+		name    string
+		conn    func() net.PacketConn
+		wantErr error
+	}{
+		{"no response", func() net.PacketConn { return &scriptedPacketConn{} }, nil},
+		{"network error", func() net.PacketConn { return &scriptedPacketConn{writeErr: wantErr} }, wantErr},
+		{"missing mapped address", func() net.PacketConn { return &bindingResponseConn{omitMapped: true} }, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewClientWithConnection(tt.conn())
+			client.SetServerAddr("198.51.100.1:3478")
+			behavior, err := client.BehaviorTestWithDetails()
+			if err == nil || behavior != nil {
+				t.Fatalf("BehaviorTestWithDetails() = %#v, %v, want nil result and error", behavior, err)
+			}
+			legacyClient := NewClientWithConnection(tt.conn())
+			legacyClient.SetServerAddr("198.51.100.1:3478")
+			classification, legacyErr := legacyClient.BehaviorTest()
+			if legacyErr == nil || classification != nil {
+				t.Fatalf("BehaviorTest() = %#v, %v, want nil result and error", classification, legacyErr)
+			}
+			if legacyErr.Error() != err.Error() {
+				t.Fatalf("BehaviorTest() error = %v, want %v", legacyErr, err)
+			}
+			if tt.wantErr != nil && (!errors.Is(err, tt.wantErr) || !errors.Is(legacyErr, tt.wantErr)) {
+				t.Fatalf("initial error identity lost: detailed %v, legacy %v", err, legacyErr)
+			}
+		})
+	}
+}
+
+func TestBehaviorTestWithDetails_NoTranslationRetainsMappedAddressAndPreservedPort(t *testing.T) {
+	for _, open := range []bool{false, true} {
+		t.Run(strconv.FormatBool(open), func(t *testing.T) {
+			conn := newBehaviorPacketConn()
+			conn.initialMappedLocal = true
+			conn.respondToChangeBoth = open
+			client := NewClientWithConnection(conn)
+			client.SetServerAddr("198.51.100.1:3478")
+			behavior, err := client.BehaviorTestWithDetails()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !behavior.NoTranslation || behavior.MappedAddress == nil || behavior.MappedAddress.String() != conn.local.String() ||
+				behavior.PortPreservation == nil || !*behavior.PortPreservation {
+				t.Fatalf("no translation result = %#v", behavior)
+			}
+			want := "Symmetric UDP firewall"
+			if open {
+				want = "Open Internet (no NAT)"
+			}
+			if got := behavior.NormalType(); got != want {
+				t.Fatalf("NormalType() = %q, want %q", got, want)
+			}
+		})
 	}
 }

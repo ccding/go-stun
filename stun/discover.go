@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 )
 
 // ErrBehaviorDiscoveryUnsupported indicates that the server answered a
@@ -183,8 +184,8 @@ func (c *Client) discover(conn net.PacketConn, addr *net.UDPAddr) (NATType, *Hos
 	return NATSymmetric, mappedAddr, nil
 }
 
-func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehavior, error) {
-	natBehavior := &NATBehavior{}
+func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehaviorResult, error) {
+	natBehavior := &NATBehaviorResult{}
 
 	// Test1   ->(IP1,port1)
 	// Perform test to check if it is under NAT.
@@ -192,6 +193,18 @@ func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehav
 	resp1, err := c.test(conn, addr)
 	if err != nil {
 		return nil, err
+	}
+	// Preserve the initial mapping before any unsupported-server or
+	// later-probe return. Compare with the bound socket, including when its
+	// port was selected dynamically or a caller supplied the connection.
+	natBehavior.MappedAddress = resp1.mappedAddr
+	if localAddr := conn.LocalAddr(); localAddr != nil {
+		if _, port, err := net.SplitHostPort(localAddr.String()); err == nil {
+			if localPort, err := strconv.ParseUint(port, 10, 16); err == nil && localPort != 0 {
+				preserved := uint16(localPort) == resp1.mappedAddr.Port()
+				natBehavior.PortPreservation = &preserved
+			}
+		}
 	}
 	natBehavior.NoTranslation = resp1.identical
 	// use otherAddr or changedAddr

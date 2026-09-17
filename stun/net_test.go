@@ -152,8 +152,13 @@ func bindingPacket(messageType uint16, transactionID []byte) *packet {
 }
 
 func newMappedAddressAttribute(ip net.IP, port uint16) (*attribute, error) {
-	ip = ip.To4()
-	value := []byte{0, attributeFamilyIPv4, byte(port >> 8), byte(port)}
+	family := byte(attributeFamilyIPV6)
+	if ipv4 := ip.To4(); ipv4 != nil {
+		family, ip = attributeFamilyIPv4, ipv4
+	} else {
+		ip = ip.To16()
+	}
+	value := []byte{0, family, byte(port >> 8), byte(port)}
 	value = append(value, ip...)
 	return newAttribute(attributeMappedAddress, value)
 }

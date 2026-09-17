@@ -103,20 +103,44 @@ func runDiscovery(client discoveryClient, transport string) (stun.NATType, *stun
 }
 
 func runBehaviorTest(c *stun.Client) error {
-	natBehavior, err := c.BehaviorTest()
+	natBehavior, err := c.BehaviorTestWithDetails()
 	return writeBehaviorTestResult(os.Stdout, natBehavior, err)
 }
 
-func writeBehaviorTestResult(w io.Writer, natBehavior *stun.NATBehavior, err error) error {
+func writeBehaviorTestResult(w io.Writer, natBehavior *stun.NATBehaviorResult, err error) error {
+	// Report initial Binding observations even when later behavior
+	// probes are unsupported or fail.
+	if natBehavior != nil {
+		if host := natBehavior.MappedAddress; host != nil {
+			if _, writeErr := fmt.Fprintln(w, "External IP Family:", host.Family()); writeErr != nil {
+				return writeErr
+			}
+			if _, writeErr := fmt.Fprintln(w, "External IP:", host.IP()); writeErr != nil {
+				return writeErr
+			}
+			if _, writeErr := fmt.Fprintln(w, "External Port:", host.Port()); writeErr != nil {
+				return writeErr
+			}
+		}
+		if preserved := natBehavior.PortPreservation; preserved != nil {
+			if _, writeErr := fmt.Fprintln(w, "Port Preservation:", *preserved); writeErr != nil {
+				return writeErr
+			}
+		}
+	}
 	if err != nil {
+		var classification *stun.NATBehavior
+		if natBehavior != nil {
+			classification = &natBehavior.NATBehavior
+		}
 		if errors.Is(err, stun.ErrBehaviorDiscoveryUnsupported) {
-			if writeErr := writePartialBehaviorTestResult(w, natBehavior); writeErr != nil {
+			if writeErr := writePartialBehaviorTestResult(w, classification); writeErr != nil {
 				return writeErr
 			}
 			_, writeErr := fmt.Fprintln(w, err)
 			return writeErr
 		}
-		if writeErr := writePartialBehaviorTestResult(w, natBehavior); writeErr != nil {
+		if writeErr := writePartialBehaviorTestResult(w, classification); writeErr != nil {
 			return writeErr
 		}
 		return err

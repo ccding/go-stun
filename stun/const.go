@@ -31,12 +31,29 @@ type NATType int
 // BehaviorType is NAT behavior type.
 type BehaviorType int
 
-// NATBehavior describes NAT mapping and filtering behavior. NoTranslation is
-// true when the mapped transport address matches the client's local address.
+// NATBehavior describes NAT mapping and filtering behavior.
 type NATBehavior struct {
 	MappingType   BehaviorType
 	FilteringType BehaviorType
+	// NoTranslation is true when the mapped transport address matches the
+	// client's local address.
 	NoTranslation bool
+}
+
+// NATBehaviorResult is returned by BehaviorTestWithDetails. It combines NAT
+// behavior with observations from the initial Binding response. Its embedded
+// NATBehavior can be compared independently of the observations from an
+// individual exchange.
+type NATBehaviorResult struct {
+	NATBehavior
+	// MappedAddress is the external address from the initial Binding response.
+	// Later probes may observe different mappings without changing this field.
+	// It is nil if no valid initial mapping was obtained.
+	MappedAddress *Host
+	// PortPreservation reports whether MappedAddress uses the actual local
+	// socket port. It is nil if the local port or initial mapping is unavailable.
+	// This observation does not imply port preservation for other destinations.
+	PortPreservation *bool
 }
 
 // NAT types.
