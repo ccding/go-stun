@@ -317,13 +317,14 @@ func TestWriteBehaviorTestResult_ReportsMappedAddressAndPortPreservation(t *test
 	tests := []struct {
 		name      string
 		ip        string
+		family    int
 		preserved bool
 		err       error
 	}{
-		{"success", "192.0.2.20", false, nil},
-		{"IPv6 preserved", "2001:db8::20", true, nil},
-		{"unsupported", "192.0.2.20", true, stun.ErrBehaviorDiscoveryUnsupported},
-		{"later failure", "192.0.2.20", false, wantErr},
+		{"success", "192.0.2.20", 1, false, nil},
+		{"IPv6 preserved", "2001:db8::20", 2, true, nil},
+		{"unsupported", "192.0.2.20", 1, true, stun.ErrBehaviorDiscoveryUnsupported},
+		{"later failure", "192.0.2.20", 1, false, wantErr},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -346,7 +347,7 @@ func TestWriteBehaviorTestResult_ReportsMappedAddressAndPortPreservation(t *test
 			} else if err != nil {
 				t.Fatal(err)
 			}
-			want := "External IP Family: " + strconv.Itoa(int(host.Family())) + "\n" +
+			want := "External IP Family: " + strconv.Itoa(tt.family) + "\n" +
 				"External IP: " + tt.ip + "\nExternal Port: 40000\n" +
 				"Port Preservation: " + strconv.FormatBool(tt.preserved) + "\n"
 			if errors.Is(tt.err, stun.ErrBehaviorDiscoveryUnsupported) {

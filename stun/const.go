@@ -33,6 +33,10 @@ type BehaviorType int
 
 // NATBehavior describes NAT mapping and filtering behavior, together with
 // observations from the initial Binding response.
+// Use keyed struct literals when constructing values. To compare NAT
+// classifications, compare MappingType, FilteringType, and NoTranslation
+// explicitly: the observation fields describe an individual exchange, and
+// whole-struct equality also compares their pointer identities.
 type NATBehavior struct {
 	MappingType   BehaviorType
 	FilteringType BehaviorType

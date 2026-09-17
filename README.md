@@ -210,6 +210,13 @@ A non-nil behavior result may contain partial results when a later probe fails.
 use the same socket as the behavior probes; no separate discovery call is
 needed.
 
+Construct `NATBehavior` values with keyed struct literals. To compare NAT
+classifications, compare `MappingType`, `FilteringType`, and `NoTranslation`
+explicitly. The observation fields describe an individual exchange:
+whole-struct equality and map keys include their pointer identities, while
+`reflect.DeepEqual` includes their values. Matching classifications can therefore
+have unequal results.
+
 ### RFC 3489 compatibility
 
 Normal requests include `SOFTWARE` and `FINGERPRINT` attributes. Some legacy
