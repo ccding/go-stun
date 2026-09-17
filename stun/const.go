@@ -32,7 +32,7 @@ type NATType int
 type BehaviorType int
 
 // NATBehavior describes NAT mapping and filtering behavior, together with
-// observations from the initial Binding response (F-001).
+// observations from the initial Binding response.
 type NATBehavior struct {
 	MappingType   BehaviorType
 	FilteringType BehaviorType
@@ -130,7 +130,7 @@ func (natBehavior NATBehavior) NormalType() string {
 		}
 		return "Open Internet (no NAT)"
 	}
-	// F-001: Mapped-address observations do not affect the classification.
+	// Mapped-address observations do not affect the classification.
 	classification := NATBehavior{
 		MappingType: natBehavior.MappingType, FilteringType: natBehavior.FilteringType,
 	}

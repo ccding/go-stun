@@ -108,7 +108,7 @@ func runBehaviorTest(c *stun.Client) error {
 }
 
 func writeBehaviorTestResult(w io.Writer, natBehavior *stun.NATBehavior, err error) error {
-	// F-001: Report initial Binding observations even when later behavior
+	// Report initial Binding observations even when later behavior
 	// probes are unsupported or fail.
 	if natBehavior != nil {
 		if host := natBehavior.MappedAddress; host != nil {

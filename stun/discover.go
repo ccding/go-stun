@@ -194,7 +194,7 @@ func (c *Client) behaviorTest(conn net.PacketConn, addr *net.UDPAddr) (*NATBehav
 	if err != nil {
 		return nil, err
 	}
-	// F-001: Preserve the initial mapping before any unsupported-server or
+	// Preserve the initial mapping before any unsupported-server or
 	// later-probe return. Compare with the bound socket, including when its
 	// port was selected dynamically or a caller supplied the connection.
 	natBehavior.MappedAddress = resp1.mappedAddr

@@ -149,7 +149,7 @@ func (c *Client) Discover() (NATType, *Host, error) {
 
 // BehaviorTest performs RFC 5780 mapping and filtering behavior tests. The
 // result includes the initial mapped address and whether its port matches the
-// actual local socket port, when available (F-001). If a later probe fails,
+// actual local socket port, when available. If a later probe fails,
 // it returns those observations and the behavior fields already determined
 // along with the error. Servers without a usable alternate address return
 // ErrBehaviorDiscoveryUnsupported together with the initial observations.
