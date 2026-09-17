@@ -108,6 +108,26 @@ func runBehaviorTest(c *stun.Client) error {
 }
 
 func writeBehaviorTestResult(w io.Writer, natBehavior *stun.NATBehavior, err error) error {
+	// F-001: Report initial Binding observations even when later behavior
+	// probes are unsupported or fail.
+	if natBehavior != nil {
+		if host := natBehavior.MappedAddress; host != nil {
+			if _, writeErr := fmt.Fprintln(w, "External IP Family:", host.Family()); writeErr != nil {
+				return writeErr
+			}
+			if _, writeErr := fmt.Fprintln(w, "External IP:", host.IP()); writeErr != nil {
+				return writeErr
+			}
+			if _, writeErr := fmt.Fprintln(w, "External Port:", host.Port()); writeErr != nil {
+				return writeErr
+			}
+		}
+		if preserved := natBehavior.PortPreservation; preserved != nil {
+			if _, writeErr := fmt.Fprintln(w, "Port Preservation:", *preserved); writeErr != nil {
+				return writeErr
+			}
+		}
+	}
 	if err != nil {
 		if errors.Is(err, stun.ErrBehaviorDiscoveryUnsupported) {
 			if writeErr := writePartialBehaviorTestResult(w, natBehavior); writeErr != nil {

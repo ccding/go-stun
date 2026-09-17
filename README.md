@@ -20,6 +20,7 @@ complete UDP hole-punching, ICE, or TURN solution.
   attributes.
 - Perform classic NAT type discovery based on [RFC 3489].
 - Test NAT mapping and filtering behavior as described by [RFC 5780].
+- Report the external address and observed port preservation in behavior mode.
 - Select the STUN server and local IP address or port.
 - Reuse an existing `net.PacketConn` from library code.
 - Communicate with RFC 3489-only servers through an explicit compatibility
@@ -76,7 +77,7 @@ Available options:
 | `-s host:port` | Use a specific STUN server. |
 | `-i ip` | Bind requests to a local IP address. |
 | `-p port` | Bind requests to a local port; `0` selects an available port. |
-| `-b` | Run RFC 5780 mapping and filtering behavior tests. |
+| `-b` | Run RFC 5780 mapping and filtering behavior tests, and report the external address and observed port preservation. |
 | `-legacy` | Omit modern optional attributes for RFC 3489-only servers. |
 | `-t transport` | Select `udp` (the default) or `tcp`. TCP performs basic Binding only. |
 | `-v level` | Set verbosity to `0` (quiet), `1` (protocol trace), or `2`/`3` (also dump packets in hex); values above `3` are rejected. |
@@ -89,6 +90,25 @@ go-stun -s stun.example.com:3478 -t tcp
 go-stun -s stun.example.com:3478 -b
 go-stun -v 1
 ```
+
+Behavior mode (`-b`) also reports the address from its initial Binding response:
+
+```text
+External IP Family: 1
+External IP: 203.0.113.10
+External Port: 54321
+Port Preservation: true
+  Mapping Behavior: EndpointIndependent
+Filtering Behavior: EndpointIndependent
+   Normal NAT Type: Full cone NAT
+```
+
+`Port Preservation` compares the external port with the socket's actual local
+port, including the port selected automatically with `-p 0`. It describes the
+initial mapping to this server; other destinations or later connections may
+use different ports. The address and port-preservation result remain available
+if the server cannot support behavior discovery or a later probe fails. The
+port-preservation line is omitted when the local port cannot be determined.
 
 ## Use the library
 
@@ -176,9 +196,19 @@ if behavior != nil && behavior.MappingType != stun.BehaviorTypeUnknown {
 if behavior != nil && behavior.FilteringType != stun.BehaviorTypeUnknown {
 	fmt.Println("Filtering behavior:", behavior.FilteringType)
 }
+if behavior != nil && behavior.MappedAddress != nil {
+	fmt.Println("Mapped address:", behavior.MappedAddress)
+}
+if behavior != nil && behavior.PortPreservation != nil {
+	fmt.Println("Port preservation:", *behavior.PortPreservation)
+}
 ```
 
 A non-nil behavior result may contain partial results when a later probe fails.
+`MappedAddress` contains the initial Binding response's address, and
+`PortPreservation` is `nil` when the local port is unavailable. Both observations
+use the same socket as the behavior probes; no separate discovery call is
+needed. See [F-001](docs/FEATURES.md#f-001-behavior-mode-address-and-port-preservation).
 
 ### RFC 3489 compatibility
 
