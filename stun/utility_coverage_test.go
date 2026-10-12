@@ -305,3 +305,24 @@ func TestUtilityCoverageBehaviorTestWithInjectedConnection(t *testing.T) {
 		t.Fatalf("BehaviorTest() = %#v", behavior)
 	}
 }
+
+func TestInjectedConnectionReadDeadlineIsCleared(t *testing.T) {
+	for name, run := range map[string]func(*Client) error{
+		"Keepalive": func(c *Client) error { _, err := c.Keepalive(); return err },
+		"Discover":  func(c *Client) error { _, _, err := c.Discover(); return err },
+	} {
+		t.Run(name, func(t *testing.T) {
+			conn := &bindingResponseConn{scriptedPacketConn: scriptedPacketConn{
+				local: &net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 5000},
+			}}
+			client := NewClientWithConnection(conn)
+			client.SetServerAddr("198.51.100.1:3478")
+			if err := run(client); err != nil {
+				t.Fatal(err)
+			}
+			if !conn.deadline.IsZero() {
+				t.Fatalf("read deadline left on caller's connection: %v", conn.deadline)
+			}
+		})
+	}
+}

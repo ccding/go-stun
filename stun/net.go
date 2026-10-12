@@ -84,6 +84,7 @@ func (c *Client) newBindingRequest(changeIP bool, changePort bool) (*packet, err
 func (c *Client) send(pkt *packet, conn net.PacketConn, addr net.Addr) (*response, error) {
 	wire := pkt.bytes()
 	c.logger.Info("\n" + hex.Dump(wire))
+	defer func() { _ = conn.SetReadDeadline(time.Time{}) }()
 	timeout := defaultTimeout
 	packetBytes := make([]byte, maxPacketSize)
 	for i := 0; i < numRetransmit; i++ {
